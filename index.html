@@ -292,6 +292,16 @@
   .user-result-copy{min-width:0;display:grid;gap:2px}.user-result-copy strong{font-size:14px}.user-result-copy span{font-size:11px;color:#9d9da4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .section-label{margin:14px 0 8px;color:#a7a7ad;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
   .social-pending{opacity:.58;pointer-events:none}
+
+  .comments-modal .modal{width:min(680px,100%)}
+  .comments-list{display:grid;gap:10px;margin:14px 0;max-height:min(52vh,520px);overflow:auto;padding-right:3px}
+  .comment-row{position:relative;padding:12px 12px 11px;border:1px solid #3d3d42;background:#29292d;border-radius:14px}
+  .comment-row p{margin:9px 0 0;color:#e1e1e4;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;padding-right:48px}
+  .comment-author{appearance:none;border:0;background:transparent;color:inherit;padding:0;display:flex;align-items:center;gap:9px;text-align:left;cursor:pointer;max-width:calc(100% - 64px)}
+  .comment-author span{min-width:0}.comment-author strong,.comment-author small{display:block}.comment-author small{margin-top:2px;color:#9c9ca3;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .comment-avatar{width:34px;height:34px;border-radius:50%;overflow:hidden;background:var(--accent2);display:grid;place-items:center;flex:none}.comment-avatar img{width:100%;height:100%;object-fit:cover}.comment-avatar svg{width:21px;height:21px;fill:#fff}
+  .comment-delete{position:absolute;right:10px;top:10px;border:1px solid rgba(255,105,105,.35);background:rgba(120,24,24,.2);color:#ffaaaa;border-radius:8px;padding:5px 7px;font-size:10px;cursor:pointer}
+  .comment-composer{display:grid;gap:8px;border-top:1px solid #3a3a3e;padding-top:13px}.comment-composer textarea{width:100%;min-height:84px;resize:vertical;border:1px solid #46464b;background:#19191c;color:#fff;border-radius:12px;padding:11px;outline:none}.comment-composer textarea:focus{border-color:#77777f}.comment-composer-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}.comment-auth-hint{font-size:11px;color:#a9a9af}.comment-auth-hint strong{color:#fff}
   .sync-indicator{position:fixed;top:10px;right:10px;z-index:90;padding:5px 8px;border-radius:999px;background:rgba(17,17,20,.72);border:1px solid #3d3d42;color:#aaaab0;font-size:10px;pointer-events:none;backdrop-filter:blur(8px)}
   .sync-indicator.online{color:#8ee8b2;opacity:0;transition:opacity .3s ease 1.6s}.sync-indicator.error{color:#ff9d9d}
   .danger-note{margin-top:8px;font-size:11px;color:#ffc189}
@@ -373,6 +383,18 @@
 
 <div class="sync-indicator" id="syncIndicator">Starting RapidFire…</div>
 <div aria-hidden="true" class="modal-backdrop" id="profileEditModal"><div aria-labelledby="profileEditTitle" aria-modal="true" class="modal" role="dialog"><div class="modal-head"><h2 id="profileEditTitle">Edit profile</h2><button aria-label="Close" class="close" id="closeProfileEdit">×</button></div><div class="profile-edit-grid"><label>Display name<input id="editDisplayName" maxlength="50"/></label><label>Handle<input autocapitalize="off" id="editHandle" maxlength="28" spellcheck="false"/></label><label>Bio<textarea id="editBio" maxlength="180"></textarea></label><label>Avatar URL<input id="editAvatarUrl" inputmode="url" placeholder="https://…"/></label></div><button class="publish" id="saveProfileEdit">Save profile</button></div></div>
+
+<div aria-hidden="true" class="modal-backdrop comments-modal" id="commentsModal">
+  <div aria-labelledby="commentsTitle" aria-modal="true" class="modal" role="dialog">
+    <div class="modal-head"><h2 id="commentsTitle">Comments</h2><button aria-label="Close comments" class="close" id="closeComments">×</button></div>
+    <div class="comments-list" id="commentsList"><div class="empty-compact">Loading comments…</div></div>
+    <div class="comment-composer">
+      <textarea id="commentText" maxlength="500" placeholder="Add a comment…"></textarea>
+      <div class="comment-composer-actions"><div class="comment-auth-hint" id="commentAuthHint">Sign in to comment</div><button class="publish" id="commentSubmit" type="button">Comment</button></div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* RapidFire production core bundle: UI boots independently; Firebase connects asynchronously. */
 const SDK_VERSION = '12.19.0';
@@ -422,12 +444,29 @@ async function createFirebaseService(firebaseConfig, options={}){
   const api = {
     app, auth, firestore, realtime, storage,
     onAuth(callback){ return authMod.onAuthStateChanged(auth, callback); },
-    async signInGoogle(){ return (await authMod.signInWithPopup(auth, googleProvider)).user; },
+    async signInGoogle(){
+      try {
+        return (await authMod.signInWithPopup(auth, googleProvider)).user;
+      } catch (error) {
+        const code=String(error?.code||'');
+        if (['auth/popup-blocked','auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment'].includes(code)) {
+          await authMod.signInWithRedirect(auth, googleProvider);
+          return null;
+        }
+        throw error;
+      }
+    },
     async signOut(){ return authMod.signOut(auth); },
+    async checkBackendAccess(){
+      const result={firestore:false,realtime:false,errors:{}};
+      try{await fsMod.getDocs(fsMod.query(fsMod.collection(firestore,'users'),fsMod.limit(1)));result.firestore=true;}catch(error){result.errors.firestore=error;}
+      try{await dbMod.get(dbMod.ref(realtime,'social/projects/__health__/likes'));result.realtime=true;}catch(error){result.errors.realtime=error;}
+      return result;
+    },
 
     async upsertProfile(profile){
       const userRef=fsMod.doc(firestore,'users',profile.id);
-      return fsMod.runTransaction(firestore,async tx=>{
+      await fsMod.runTransaction(firestore,async tx=>{
         const existing=await tx.get(userRef);
         const current=existing.exists()?existing.data():null;
         const authUid=profile.authUid||auth.currentUser?.uid||current?.authUid||'';
@@ -452,10 +491,13 @@ async function createFirebaseService(firebaseConfig, options={}){
           createdAt:current?.createdAt||fsMod.serverTimestamp(),
           updatedAt:fsMod.serverTimestamp()
         };
-        tx.set(handleRef,{profileId:profile.id,updatedAt:fsMod.serverTimestamp()},{merge:true});
-        tx.set(userRef,payload,{merge:true});
-        return {...current,...payload};
+        // Full replacement deliberately strips legacy/unknown fields so old profile
+        // documents cannot make the current strict schema fail during Google login.
+        tx.set(handleRef,{profileId:profile.id,updatedAt:fsMod.serverTimestamp()});
+        tx.set(userRef,payload);
       });
+      const resolved=await fsMod.getDoc(userRef);
+      return resolved.exists()?{id:resolved.id,...resolved.data()}:profile;
     },
     subscribeProfiles(callback, onError=()=>{}){
       const q = fsMod.query(fsMod.collection(firestore,'users'), fsMod.limit(250));
@@ -495,7 +537,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     },
 
     subscribeProjects(callback, onError=()=>{}){
-      const q = fsMod.query(fsMod.collection(firestore,'projects'), fsMod.orderBy('createdAt','desc'), fsMod.limit(100));
+      const q = fsMod.query(fsMod.collection(firestore,'projects'), fsMod.where('published','==',true), fsMod.orderBy('createdAt','desc'), fsMod.limit(100));
       return fsMod.onSnapshot(q, snap => callback(snap.docs.map(d=>({id:d.id,...d.data()}))), onError);
     },
     async upsertProject(project){
@@ -549,19 +591,21 @@ async function createFirebaseService(firebaseConfig, options={}){
 
     subscribeProjectSocial(projectId, currentProfileId, callback, onError=()=>{}){
       const p=key(projectId), u=key(currentProfileId||'');
-      const state={likes:0,saves:0,shares:0,liked:false,saved:false,shared:false};
+      const state={likes:0,saves:0,shares:0,comments:0,liked:false,saved:false,shared:false};
       const emit=()=>callback({...state});
       const unsubs=[];
-      for(const kind of ['likes','saves','shares']){
+      for(const kind of ['likes','saves','shares','comments']){
         const r=dbMod.ref(realtime,`social/projects/${p}/${kind}`);
         unsubs.push(dbMod.onValue(r,snap=>{
           state[kind]=snap.numChildren();
-          const singular=kind==='likes'?'liked':kind==='saves'?'saved':'shared';
-          state[singular]=u? snap.hasChild(u):false;
+          if(kind!=='comments'){
+            const singular=kind==='likes'?'liked':kind==='saves'?'saved':'shared';
+            state[singular]=u? snap.hasChild(u):false;
+          }
           emit();
         },onError));
       }
-      return ()=>unsubs.forEach(fn=>{try{fn();}catch(_){}});
+      return ()=>unsubs.forEach(fn=>{try{fn();}catch(_){} });
     },
     async toggleProjectSocial(kind,projectId,profileId){
       if(!['likes','saves','shares'].includes(kind)) throw new Error('Unsupported social action');
@@ -578,6 +622,25 @@ async function createFirebaseService(firebaseConfig, options={}){
     async markShared(projectId,profileId){
       const p=key(projectId),u=key(profileId);
       await dbMod.set(dbMod.ref(realtime,`social/projects/${p}/shares/${u}`),{at:dbMod.serverTimestamp()});
+    },
+    subscribeProjectComments(projectId,callback,onError=()=>{}){
+      const commentsRef=dbMod.ref(realtime,`social/projects/${key(projectId)}/comments`);
+      return dbMod.onValue(commentsRef,snap=>{
+        const value=snap.val()||{};
+        const comments=Object.entries(value).map(([id,row])=>({id,...row})).sort((a,b)=>(Number(a.at)||0)-(Number(b.at)||0));
+        callback(comments);
+      },onError);
+    },
+    async createComment(projectId,profileId,text){
+      const clean=String(text||'').trim().slice(0,500);
+      if(!clean) throw new Error('Write a comment first.');
+      const commentsRef=dbMod.ref(realtime,`social/projects/${key(projectId)}/comments`);
+      const commentRef=dbMod.push(commentsRef);
+      await dbMod.set(commentRef,{authorProfileId:String(profileId),text:clean,at:dbMod.serverTimestamp()});
+      return commentRef.key;
+    },
+    async deleteComment(projectId,commentId){
+      await dbMod.remove(dbMod.ref(realtime,`social/projects/${key(projectId)}/comments/${key(commentId)}`));
     },
     subscribeSaved(profileId,callback,onError=()=>{}){
       return dbMod.onValue(dbMod.ref(realtime,`social/users/${key(profileId)}/saved`),snap=>callback(Object.keys(snap.val()||{})),onError);
@@ -599,7 +662,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       await dbMod.update(dbMod.ref(realtime),updates);
       return next;
     },
-    async setPresence(profileId){
+    async setPresence(profileId,onError=()=>{}){
       const statusRef=dbMod.ref(realtime,`presence/${key(profileId)}`);
       const connectedRef=dbMod.ref(realtime,'.info/connected');
       const unsubscribe=dbMod.onValue(connectedRef,async snap=>{
@@ -607,8 +670,8 @@ async function createFirebaseService(firebaseConfig, options={}){
         try{
           await dbMod.onDisconnect(statusRef).set({online:false,lastChanged:dbMod.serverTimestamp()});
           await dbMod.set(statusRef,{online:true,lastChanged:dbMod.serverTimestamp()});
-        }catch(_){}
-      });
+        }catch(error){onError(error);}
+      },onError);
       return unsubscribe;
     },
     subscribePresence(profileId,callback,onError=()=>{}){
@@ -617,7 +680,6 @@ async function createFirebaseService(firebaseConfig, options={}){
   };
   return api;
 }
-
 
 (() => {
   'use strict';
@@ -647,6 +709,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     like:'<svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z"/></svg>',
     save:'<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     share:'<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5M8 13l8 5"/></svg>',
+    comment:'<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.5-4.5A8.5 8.5 0 1 1 21 12Z"/></svg>',
     info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg>',
     fullscreen:'<svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>'
   };
@@ -665,7 +728,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     measurementId:'G-ZTXBBKYGB2'
   });
   const MAXP_EMAIL='timmiballz22@gmail.com';
-  const USER_CAPABILITIES = Object.freeze({browse:true,publish:true,post:true,follow:true,like:true,save:true,share:true,manageOwnProjects:true,editProfile:true});
+  const USER_CAPABILITIES = Object.freeze({browse:true,publish:true,post:true,follow:true,like:true,save:true,share:true,comment:true,manageOwnProjects:true,editProfile:true});
   const normalizeEmail = value => String(value || '').trim().toLowerCase();
   const userIdFromHandle = handle => `user-${String(handle || 'user').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'user'}`;
   const cleanHandle = value => String(value||'').trim().replace(/^@+/,'').replace(/\s+/g,'').replace(/[^A-Za-z0-9_.-]/g,'').slice(0,28) || 'User';
@@ -690,7 +753,16 @@ async function createFirebaseService(firebaseConfig, options={}){
     };
   }
   const userRegistry=new Map();
-  function registerUser(raw){const user=normalizeUser(raw);const prior=userRegistry.get(user.id);const merged=prior?normalizeUser({...prior,...user,stats:{...prior.stats,...user.stats}}):user;userRegistry.set(merged.id,merged);return merged;}
+  function registerUser(raw={}){
+    const candidateId=String(raw.id||userIdFromHandle(raw.handle||raw.username||raw.displayName||raw.name||'User'));
+    const prior=userRegistry.get(candidateId)||null;
+    const mergedRaw=prior?{
+      ...prior,...raw,id:candidateId,
+      stats:{...prior.stats,...(raw.stats||{})},
+      capabilities:{...prior.capabilities,...(raw.capabilities||{})}
+    }:{...raw,id:candidateId};
+    const user=normalizeUser(mergedRaw);userRegistry.set(user.id,user);return user;
+  }
   function findUserByHandle(handle){const key=String(handle||'').trim().toLowerCase();return [...userRegistry.values()].find(user=>user.handle.toLowerCase()===key)||null;}
   function ensureUserByHandle(handle,seed={}){return findUserByHandle(handle)||registerUser({...seed,id:seed.id||userIdFromHandle(handle),handle,displayName:seed.displayName||handle});}
   function userAvatarHTML(user,className='avatar'){
@@ -701,6 +773,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   let currentUser=null,viewedProfileId=null,cloud=null,firebaseUser=null,presenceUnsub=null,followingUnsub=null;
   const socialUnsubByArticle=new WeakMap();
   let followingIds=new Set(),profileFollowers=[],profileFollowing=[],profilePosts=[],profileSavedIds=[],profilePresence={online:false};
+  let commentUnsub=null,activeCommentProjectId=null,activeComments=[];
   const serviceAdapters={auth:null,users:null};
   function configureServices(adapters={}){Object.assign(serviceAdapters,adapters);return {...serviceAdapters};}
 
@@ -713,7 +786,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       id:String(raw.id||`project-${Math.random().toString(36).slice(2,9)}`),ownerUserId:owner.id,
       title:String(raw.title||'Untitled Project'),creator:owner.handle,desc:String(raw.desc||raw.description||'No description yet.'),
       tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
-      views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),
+      views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
       type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
       source:String(raw.source||''),sourceElementId:String(raw.sourceElementId||''),contentUrl:String(raw.contentUrl||''),storagePath:String(raw.storagePath||''),embedUrl:String(raw.embedUrl||''),
       createdAt:raw.createdAt?.toMillis?raw.createdAt.toMillis():Number(raw.createdAt||Date.now())
@@ -730,7 +803,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     return `<header class="creator-bar">${renderBrandLogo()}<button class="creator-profile-hitbox" data-open-profile="${escapeHTML(project.ownerUserId)}" type="button" aria-label="Open ${escapeHTML(owner.handle)} profile">${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.handle)}</span><span class="creator-hint">View profile</span></span></button><button class="follow-btn" data-follow data-follow-user="${escapeHTML(project.ownerUserId)}">Follow</button><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)} · ${suffix}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
   }
   function renderRail(project){
-    return `<div class="rail"><button class="rail-btn" data-like aria-label="Like">${ICONS.like}<span class="count" data-like-count>${escapeHTML(project.likes)}</span></button><button class="rail-btn" data-save aria-label="Save">${ICONS.save}<span class="count" data-save-count>${escapeHTML(project.saves)}</span></button><button class="rail-btn" data-share aria-label="Share">${ICONS.share}<span class="count" data-share-count>${escapeHTML(project.shares||'0')}</span></button><button class="rail-btn" data-info aria-label="Project details">${ICONS.info}</button><button class="rail-btn" data-fullscreen aria-label="Fullscreen">${ICONS.fullscreen}</button></div>`;
+    return `<div class="rail"><button class="rail-btn" data-like aria-label="Like">${ICONS.like}<span class="count" data-like-count>${escapeHTML(project.likes)}</span></button><button class="rail-btn" data-comment aria-label="Comments">${ICONS.comment}<span class="count" data-comment-count>0</span></button><button class="rail-btn" data-save aria-label="Save">${ICONS.save}<span class="count" data-save-count>${escapeHTML(project.saves)}</span></button><button class="rail-btn" data-share aria-label="Share">${ICONS.share}<span class="count" data-share-count>${escapeHTML(project.shares||'0')}</span></button><button class="rail-btn" data-info aria-label="Project details">${ICONS.info}</button><button class="rail-btn" data-fullscreen aria-label="Fullscreen">${ICONS.fullscreen}</button></div>`;
   }
   function renderGate(){
     return `<button class="play-gate" data-play aria-label="Tap to play"><span class="play-gate-pill"><span class="play-gate-icon">▶</span><strong>Tap to play</strong><small>Project runs only after you tap</small></span></button><button class="leave-play" data-stop-play type="button">← Back to feed</button>`;
@@ -997,7 +1070,8 @@ async function createFirebaseService(firebaseConfig, options={}){
   const projectRegistry = new Map();
   function mountProject(raw, {prepend=false}={}){
     const project = normalizeProject(raw); projectRegistry.set(project.id, project);
-    const old = $(`.project[data-project-id="${CSS.escape(project.id)}"]`, feed);    if(old){ feedObserver.unobserve(old); runtimeByArticle.get(old)?.destroy(); if(activeProject===old) activeProject=null; old.remove(); }
+    const old = $(`.project[data-project-id="${CSS.escape(project.id)}"]`, feed);
+    if(old){ feedObserver.unobserve(old); runtimeByArticle.get(old)?.destroy(); if(activeProject===old) activeProject=null; old.remove(); }
     const article = projectArticle(project); prepend ? feed.prepend(article) : feed.append(article);
     runtimeByArticle.set(article, createRuntime(article,project)); feedObserver.observe(article); bindProjectSocial(article,project); return article;
   }
@@ -1033,7 +1107,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   ];
   function upsertSearchItem(project){
     const idx=items.findIndex(i=>i.localId===project.id || (i.title===project.title && i.creator===project.creator));
-    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',createdAt:project.createdAt};
+    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',createdAt:project.createdAt};
     idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
   }
   function removeLocalProject(projectId,{skipConfirm=false}={}){
@@ -1043,7 +1117,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     if(article){if(activeProject===article)setProjectPlaying(article,false);feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}
     projectRegistry.delete(projectId);const index=items.findIndex(i=>i.localId===projectId);if(index>=0)items.splice(index,1);
     safeStore.set('rapidfire.local.projects.v2',safeStore.get('rapidfire.local.projects.v2',[]).filter(p=>p.id!==projectId));
-    renderSearch($('#searchInput')?.value||'');if(currentUser){updateProfileCard();renderProfileTab('projects');}showToast(`${project.title} deleted`);return true;
+    renderSearch($('#searchInput')?.value||'');if(currentUser){renderProfile();renderProfileTab('projects');}showToast(`${project.title} deleted`);return true;
   }
 
   storedProjects.forEach(p=>mountProject(p));
@@ -1072,6 +1146,25 @@ async function createFirebaseService(firebaseConfig, options={}){
   function closeInfo(){ infoSheet.classList.remove('open'); infoSheet.setAttribute('aria-hidden','true'); }
   $('#closeInfo').addEventListener('click',closeInfo); infoSheet.addEventListener('click',e=>{if(e.target===infoSheet) closeInfo();});
 
+  let lastCloudErrorKey='';
+  function cloudErrorMessage(scope,error){
+    const code=String(error?.code||'').toLowerCase(),message=String(error?.message||'');
+    if(code.includes('permission-denied')||code.includes('permission_denied')||/permission denied|insufficient permissions/i.test(message)) return `${scope} blocked by Firebase rules`;
+    if(code.includes('unauthorized-domain')) return 'This domain is not authorized for Google sign-in';
+    if(code.includes('network')||/network|offline|failed to fetch/i.test(message)) return `${scope} is offline`;
+    return `${scope} failed`;
+  }
+  function reportCloudError(scope,error,{toastUser=false}={}){
+    console.warn(`[RapidFire:${scope}]`,error);
+    const message=cloudErrorMessage(scope,error),key=`${scope}:${error?.code||error?.message||message}`;
+    const indicator=$('#syncIndicator');if(indicator){indicator.textContent=message;indicator.classList.remove('online');indicator.classList.add('error');}
+    if(toastUser&&key!==lastCloudErrorKey){lastCloudErrorKey=key;showToast(message);}
+  }
+  function queueSocialSurfaceRefresh(){
+    if(queueSocialSurfaceRefresh.pending)return;queueSocialSurfaceRefresh.pending=true;
+    requestAnimationFrame(()=>{queueSocialSurfaceRefresh.pending=false;if(screens.search?.classList.contains('active'))renderSearch($('#searchInput')?.value||'');if(screens.profile?.classList.contains('active')&&['projects','saved'].includes(activeProfileTab))renderProfileTab(activeProfileTab);});
+  }
+
   let fullscreenProject = null;
   let intentionalFullscreenExit = false;
   document.addEventListener('fullscreenchange',()=>{
@@ -1093,15 +1186,20 @@ async function createFirebaseService(firebaseConfig, options={}){
     const stop=e.target.closest('[data-stop-play]'); if(stop){ setProjectPlaying(stop.closest('.project'),false); return; }
     const follow=e.target.closest('[data-follow]'); if(follow){
       const target=follow.dataset.followUser;if(!currentUser){showToast('Sign in to follow creators');return;}if(target===currentUser.id){showToast('This is your profile');return;}if(!cloud){showToast('Social service is offline');return;}
-      follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){showToast(err?.message||'Could not update follow');}finally{follow.classList.remove('social-pending');}return;
+      follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{follow.classList.remove('social-pending');}return;
     }
     const like=e.target.closest('[data-like]'); if(like){await runProjectSocialAction(like,'likes');return;}
     const save=e.target.closest('[data-save]'); if(save){await runProjectSocialAction(save,'saves');return;}
     const info=e.target.closest('[data-info]'); if(info){ openInfo(info.closest('.project')); return; }
+    const comment=e.target.closest('[data-comment]'); if(comment){ openComments(comment.closest('.project')?.dataset.projectId||''); return; }
     const share=e.target.closest('[data-share]'); if(share){
       const article=share.closest('.project'),title=article?.dataset.project||'RapidFire project',projectId=article?.dataset.projectId||'';
       const url=new URL(location.href);url.searchParams.set('project',projectId);
-      try{if(navigator.share)await navigator.share({title,text:`Check out ${title} on RapidFire`,url:url.href});else if(navigator.clipboard){await navigator.clipboard.writeText(url.href);showToast('Project link copied');}else showToast('Share ready');if(currentUser&&cloud)await cloud.markShared(projectId,currentUser.id);}catch(_){}return;
+      let shared=false;
+      try{if(navigator.share)await navigator.share({title,text:`Check out ${title} on RapidFire`,url:url.href});else if(navigator.clipboard){await navigator.clipboard.writeText(url.href);showToast('Project link copied');}else showToast('Share ready');shared=true;}
+      catch(err){if(String(err?.name||'')!=='AbortError')showToast('Could not share this project');return;}
+      if(shared&&currentUser&&cloud){try{await cloud.markShared(projectId,currentUser.id);}catch(err){reportCloudError('Share count',err,{toastUser:true});}}
+      return;
     }
     const fullscreen=e.target.closest('[data-fullscreen]'); if(fullscreen){ const field=fullscreen.closest('.playfield'), project=fullscreen.closest('.project'); try{ if(document.fullscreenElement){ intentionalFullscreenExit=true; await document.exitFullscreen(); } else if(field?.requestFullscreen){ fullscreenProject=project; await field.requestFullscreen(); } else showToast('Fullscreen is not available here'); }catch(_){fullscreenProject=null;intentionalFullscreenExit=false;showToast('Fullscreen request was blocked');} }
   });
@@ -1112,16 +1210,19 @@ async function createFirebaseService(firebaseConfig, options={}){
     const unsub=cloud.subscribeProjectSocial(project.id,currentUser?.id||'',state=>{
       const like=$('[data-like]',article),save=$('[data-save]',article);
       like?.classList.toggle('liked',!!state.liked);save?.classList.toggle('saved',!!state.saved);
-      const lc=$('[data-like-count]',article),sc=$('[data-save-count]',article),sh=$('[data-share-count]',article);
-      if(lc)lc.textContent=formatCount(state.likes);if(sc)sc.textContent=formatCount(state.saves);if(sh)sh.textContent=formatCount(state.shares);
-    },()=>{});
+      const lc=$('[data-like-count]',article),sc=$('[data-save-count]',article),sh=$('[data-share-count]',article),cc=$('[data-comment-count]',article);
+      if(lc)lc.textContent=formatCount(state.likes);if(sc)sc.textContent=formatCount(state.saves);if(sh)sh.textContent=formatCount(state.shares);if(cc)cc.textContent=formatCount(state.comments);
+      project.likes=String(state.likes);project.saves=String(state.saves);project.shares=String(state.shares);project.comments=String(state.comments);
+      const item=items.find(i=>(i.projectId||i.localId)===project.id);if(item){item.likes=project.likes;item.saves=project.saves;item.shares=project.shares;item.comments=project.comments;}
+      queueSocialSurfaceRefresh();
+    },err=>reportCloudError('Social sync',err));
     socialUnsubByArticle.set(article,unsub);
   }
   function rebindAllProjectSocial(){for(const article of projectElements()){const p=projectRegistry.get(article.dataset.projectId);if(p)bindProjectSocial(article,p);}}
   async function runProjectSocialAction(button,kind){
     if(!currentUser){showToast(`Sign in to ${kind==='likes'?'like':'save'} projects`);return;}if(!cloud){showToast('Social service is offline');return;}
     const article=button.closest('.project'),projectId=article?.dataset.projectId;if(!projectId)return;
-    button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){showToast(err?.message||'Social update failed');}finally{button.classList.remove('social-pending');}
+    button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');}
   }
 
   // ---------- search ----------
@@ -1144,6 +1245,28 @@ async function createFirebaseService(firebaseConfig, options={}){
   function openProjectFromSearch(title){const target=$(`.project[data-project="${CSS.escape(title)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast(`${title} is listed, but its playable preview is not loaded yet`);}
   $('#searchInput').addEventListener('input',e=>renderSearch(e.target.value)); $('#searchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addRecent(e.currentTarget.value);renderSearch(e.currentTarget.value);}}); renderSearch();
 
+  // ---------- project comments ----------
+  const commentsModal=$('#commentsModal'),commentsList=$('#commentsList'),commentText=$('#commentText'),commentSubmit=$('#commentSubmit'),commentAuthHint=$('#commentAuthHint'),commentsTitle=$('#commentsTitle');
+  function closeComments(){commentUnsub?.();commentUnsub=null;activeCommentProjectId=null;activeComments=[];commentsModal?.classList.remove('open');commentsModal?.setAttribute('aria-hidden','true');}
+  function commentAuthor(comment){return userRegistry.get(String(comment.authorProfileId))||normalizeUser({id:String(comment.authorProfileId),handle:String(comment.authorProfileId||'User'),displayName:String(comment.authorProfileId||'User')});}
+  function renderComments(){
+    if(!commentsModal)return;const project=projectById(activeCommentProjectId)||projectRegistry.get(activeCommentProjectId);if(commentsTitle)commentsTitle.textContent=project?`Comments · ${project.title}`:'Comments';
+    commentsList.innerHTML=activeComments.length?activeComments.map(c=>{const author=commentAuthor(c),own=!!currentUser&&author.id===currentUser.id;return `<article class="comment-row" data-comment-id="${escapeHTML(c.id)}"><button class="comment-author" type="button" data-comment-profile="${escapeHTML(author.id)}">${userAvatarHTML(author,'comment-avatar')}<span><strong>${escapeHTML(author.displayName)}</strong><small>@${escapeHTML(author.handle)} · ${escapeHTML(formatTime(c.at))}</small></span></button>${own?`<button class="comment-delete" type="button" data-delete-comment="${escapeHTML(c.id)}" aria-label="Delete comment">Delete</button>`:''}<p>${escapeHTML(c.text)}</p></article>`;}).join(''):'<div class="empty-compact">No comments yet. Start the conversation.</div>';
+    const signedIn=!!currentUser;commentText.disabled=!signedIn;commentSubmit.disabled=!signedIn;commentAuthHint.innerHTML=signedIn?`Commenting as <strong>@${escapeHTML(currentUser.handle)}</strong>`:'<button class="mini-btn" id="commentSignInBtn" type="button">Sign in to comment</button>';
+    $('#commentSignInBtn')?.addEventListener('click',signInWithGoogle);$$('[data-comment-profile]',commentsList).forEach(b=>b.addEventListener('click',()=>{closeComments();openProfile(b.dataset.commentProfile);}));$$('[data-delete-comment]',commentsList).forEach(b=>b.addEventListener('click',()=>deleteComment(b.dataset.deleteComment)));
+  }
+  function openComments(projectId){
+    if(!projectId)return;commentUnsub?.();activeCommentProjectId=projectId;activeComments=[];commentsModal.classList.add('open');commentsModal.setAttribute('aria-hidden','false');renderComments();
+    if(!cloud){commentsList.innerHTML='<div class="empty-compact">Comments are unavailable while Firebase is offline.</div>';return;}
+    commentUnsub=cloud.subscribeProjectComments(projectId,comments=>{activeComments=comments;renderComments();},err=>reportCloudError('Comments sync',err,{toastUser:true}));
+  }
+  async function submitComment(){
+    if(!currentUser)return signInWithGoogle();if(!can('comment'))return showToast('Commenting is unavailable for this account');if(!cloud||!activeCommentProjectId)return showToast('Comments service is offline');const text=commentText.value.trim();if(!text)return showToast('Write a comment first');
+    commentSubmit.disabled=true;try{await cloud.createComment(activeCommentProjectId,currentUser.id,text);commentText.value='';showToast('Comment posted');}catch(err){reportCloudError('Comment publish',err,{toastUser:true});}finally{commentSubmit.disabled=false;}
+  }
+  async function deleteComment(commentId){if(!currentUser||!cloud||!activeCommentProjectId)return;if(!confirm('Delete this comment?'))return;try{await cloud.deleteComment(activeCommentProjectId,commentId);}catch(err){reportCloudError('Comment delete',err,{toastUser:true});}}
+  $('#closeComments')?.addEventListener('click',closeComments);commentsModal?.addEventListener('click',e=>{if(e.target===commentsModal)closeComments();});commentSubmit?.addEventListener('click',submitComment);commentText?.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')submitComment();});
+
   // ---------- profile / authenticated social session ----------
   let activeProfileTab='projects',profileSortNewest=true,postComposerOpen=false;
   let profileUnsubs=[];
@@ -1165,9 +1288,10 @@ async function createFirebaseService(firebaseConfig, options={}){
     const followers=profileFollowers.length,following=profileFollowing.length,projectCount=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId)).length;
     profileCard.innerHTML=`<h1>${escapeHTML(user.displayName)}</h1><div class="handle">@${escapeHTML(user.handle)}</div><p>${followers} followers · ${following} following · ${projectCount} project${projectCount===1?'':'s'}</p>${user.bio?`<div class="bio">${escapeHTML(user.bio)}</div>`:''}<div class="presence ${profilePresence.online?'':'offline'}">${profilePresence.online?'● Online':'○ Offline'}</div>`;
     if(isOwn)profileActions.innerHTML='<button class="mini-btn" id="editProfileBtn">Edit profile</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>';
-    else profileActions.innerHTML=`<button class="mini-btn" data-profile-follow="${escapeHTML(user.id)}">${followingIds.has(user.id)?'Following':'Follow'}</button>${currentUser?'':'<button class="google-btn" id="profileSignInBtn"><span class="g-mark">G</span><span>Sign in</span></button>'}`;
+    else if(currentUser)profileActions.innerHTML=`<button class="mini-btn" data-profile-follow="${escapeHTML(user.id)}">${followingIds.has(user.id)?'Following':'Follow'}</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>`;
+    else profileActions.innerHTML='<button class="google-btn" id="profileSignInBtn"><span class="g-mark">G</span><span>Sign in</span></button>';
     $('#editProfileBtn')?.addEventListener('click',openProfileEditor);$('#signOutBtn')?.addEventListener('click',signOut);$('#profileSignInBtn')?.addEventListener('click',signInWithGoogle);
-    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){showToast(err?.message||'Could not update follow');}finally{b.classList.remove('social-pending');}});
+    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{b.classList.remove('social-pending');}});
     const savedTab=$('[data-profile-tab="saved"]');if(savedTab)savedTab.hidden=!isOwn;
     updateProfileTabs();renderProfileTab(activeProfileTab==='saved'&&!isOwn?'projects':activeProfileTab);
   }
@@ -1199,21 +1323,41 @@ async function createFirebaseService(firebaseConfig, options={}){
   function openProjectById(id){const target=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast('That project is not loaded in this feed yet');}
   function subscribeViewedProfile(){
     clearProfileSubscriptions();const user=viewedUser();if(!user||!cloud){renderProfile();return;}
-    profileUnsubs.push(cloud.subscribeFollowers(user.id,ids=>{profileFollowers=ids;renderProfile();}),cloud.subscribeFollowing(user.id,ids=>{profileFollowing=ids;renderProfile();}),cloud.subscribePosts(user.id,posts=>{profilePosts=posts;updateProfileTabs();if(activeProfileTab==='posts')renderProfileTab('posts');}),cloud.subscribePresence(user.id,state=>{profilePresence=state||{online:false};renderProfile();}));
-    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');}));
+    profileUnsubs.push(
+      cloud.subscribeFollowers(user.id,ids=>{profileFollowers=ids;renderProfile();},err=>reportCloudError('Followers sync',err)),
+      cloud.subscribeFollowing(user.id,ids=>{profileFollowing=ids;renderProfile();},err=>reportCloudError('Profile following sync',err)),
+      cloud.subscribePosts(user.id,posts=>{profilePosts=posts;updateProfileTabs();if(activeProfileTab==='posts')renderProfileTab('posts');},err=>reportCloudError('Posts sync',err)),
+      cloud.subscribePresence(user.id,state=>{profilePresence=state||{online:false};renderProfile();},err=>reportCloudError('Presence sync',err))
+    );
+    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');},err=>reportCloudError('Saved sync',err))); 
   }
   function setCurrentUser(rawUser){
     const previousId=currentUser?.id||null;
     currentUser=rawUser?registerUser(rawUser):null;followingUnsub?.();followingUnsub=null;followingIds=new Set();
-    if(currentUser&&cloud)followingUnsub=cloud.subscribeFollowing(currentUser.id,ids=>{followingIds=new Set(ids);refreshFollowButtons();if(screens.profile.classList.contains('active'))renderProfile();});
+    if(currentUser&&cloud)followingUnsub=cloud.subscribeFollowing(currentUser.id,ids=>{followingIds=new Set(ids);refreshFollowButtons();if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Following sync',err));
+    if(!currentUser){postComposerOpen=false;clearProfileSubscriptions();}
     refreshFollowButtons();rebindAllProjectSocial();
+    if(activeCommentProjectId)renderComments();
     if(screens.profile.classList.contains('active')){if(!viewedProfileId||viewedProfileId===previousId)viewedProfileId=currentUser?.id||null;renderProfile();subscribeViewedProfile();}
     window.dispatchEvent(new CustomEvent('rapidfire:sessionchange',{detail:{user:currentUser}}));return currentUser;
   }
-  async function signInWithGoogle(){if(!cloud){showToast('Firebase is not connected yet');return null;}try{await cloud.signInGoogle();return true;}catch(err){showToast(err?.code==='auth/popup-closed-by-user'?'Sign-in cancelled':(err?.message||'Google sign-in failed'));return null;}}
-  async function signOut(){try{await cloud?.signOut();}catch(_){}viewedProfileId=null;}
-  async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){showToast(err?.message||'Could not publish post');}}
-  async function deletePost(id){if(!currentUser||!cloud)return;if(!confirm('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){showToast(err?.message||'Could not delete post');}}
+  async function signInWithGoogle(){
+    if(!cloud){showToast('Firebase is not connected yet');return null;}
+    try{await cloud.signInGoogle();return true;}
+    catch(err){
+      const code=String(err?.code||'');
+      if(code==='auth/popup-closed-by-user')showToast('Sign-in cancelled');
+      else if(code==='auth/unauthorized-domain')showToast('Add this site to Firebase Auth → Authorized domains');
+      else reportCloudError('Google sign-in',err,{toastUser:true});
+      return null;
+    }
+  }
+  async function signOut(){
+    try{viewedProfileId=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
+    catch(err){reportCloudError('Sign out',err,{toastUser:true});}
+  }
+  async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){reportCloudError('Post publish',err,{toastUser:true});}}
+  async function deletePost(id){if(!currentUser||!cloud)return;if(!confirm('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){reportCloudError('Post delete',err,{toastUser:true});}}
   async function deleteOwnedProject(id){const p=projectRegistry.get(id);if(!p||p.ownerUserId!==currentUser?.id||p.sourceType==='builtin')return;if(!confirm(`Delete "${p.title}"?`))return;try{if(p.remote&&cloud)await cloud.deleteProject(p);else removeLocalProject(id,{skipConfirm:true});removeProjectFromUI(id);showToast('Project deleted');}catch(err){showToast(err?.message||'Could not delete project');}}
   function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);const ix=items.findIndex(i=>(i.projectId||i.localId)===id);if(ix>=0)items.splice(ix,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
 
@@ -1234,17 +1378,23 @@ async function createFirebaseService(firebaseConfig, options={}){
     }
     indicator.textContent='Connecting…';
     try{
-      cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});indicator.textContent='Firebase connected';indicator.classList.add('online');
-      cloud.subscribeProfiles(users=>{users.forEach(registerUser);renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>console.warn('profiles listener',err));
-      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>console.warn('projects listener',err));
+      cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});
+      const health=await cloud.checkBackendAccess();
+      indicator.classList.remove('online','error');
+      if(health.firestore&&health.realtime){indicator.textContent='Firebase connected';indicator.classList.add('online');}
+      else{indicator.textContent='Firebase rules need deployment';indicator.classList.add('error');console.warn('RapidFire backend access check failed',health.errors);showToast('Firebase connected, but database rules are blocking app data');}
+      cloud.subscribeProfiles(users=>{users.forEach(registerUser);renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
+      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
       cloud.onAuth(async fb=>{
         firebaseUser=fb;presenceUnsub?.();presenceUnsub=null;
         if(!fb){setCurrentUser(null);return;}
-        const profileId=await profileIdForFirebaseUser(fb);const isMaxP=profileId==='user-maxp';const baseHandle=isMaxP?'MaxP':cleanHandle((fb.displayName||fb.email?.split('@')[0]||'User')+(isMaxP?'':`-${fb.uid.slice(0,5)}`));
-        let user=registerUser({...(isMaxP?MAXP_USER:{}),id:profileId,authUid:fb.uid,handle:isMaxP?'MaxP':baseHandle,displayName:isMaxP?'MaxP':(fb.displayName||baseHandle),bio:isMaxP?'Main developer':'',avatarUrl:fb.photoURL||'',capabilities:USER_CAPABILITIES});
-        try{const stored=await cloud.upsertProfile(user);user=registerUser({...user,...stored,capabilities:USER_CAPABILITIES});}catch(err){console.warn('profile upsert',err);}
-        setCurrentUser(user);presenceUnsub=await cloud.setPresence(user.id);
-        if(isMaxP){for(const p of builtInProjects){cloud.upsertProject({...p,sourceType:'builtin',contentUrl:p.contentUrl}).catch(()=>{});}}
+        const profileId=profileIdForFirebaseUser(fb),isMaxP=profileId==='user-maxp',baseHandle=isMaxP?'MaxP':cleanHandle((fb.displayName||fb.email?.split('@')[0]||'User')+`-${fb.uid.slice(0,5)}`);
+        const seed={...(isMaxP?MAXP_USER:{}),id:profileId,authUid:fb.uid,handle:isMaxP?'MaxP':baseHandle,displayName:isMaxP?'MaxP':(fb.displayName||baseHandle),bio:isMaxP?'Main developer':'',avatarUrl:fb.photoURL||'',capabilities:USER_CAPABILITIES};
+        let stored=null;try{stored=await cloud.getProfile(profileId);}catch(err){reportCloudError('Profile load',err);}
+        let user=registerUser(stored?{...seed,...stored,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES}:seed);
+        try{const persisted=await cloud.upsertProfile(user);user=registerUser({...user,...persisted,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES});}catch(err){reportCloudError('Profile save',err,{toastUser:true});}
+        setCurrentUser(user);try{presenceUnsub=await cloud.setPresence(user.id,err=>reportCloudError('Presence',err));}catch(err){reportCloudError('Presence',err);}
+        if(isMaxP){for(const p of builtInProjects){cloud.upsertProject({...p,sourceType:'builtin',contentUrl:p.contentUrl}).catch(err=>reportCloudError('Built-in project sync',err));}}
       });
       rebindAllProjectSocial();
     }catch(err){console.error('Firebase bootstrap failed',err);indicator.textContent='Firebase offline';indicator.classList.add('error');showToast('Firebase connection failed — browsing still works');renderProfile();}
@@ -1273,6 +1423,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     if(e.key!=='Escape') return;
     if(modal.classList.contains('open')){ closePublish(); return; }
     if(infoSheet.classList.contains('open')){ closeInfo(); return; }
+    if($('#commentsModal')?.classList.contains('open')){ closeComments(); return; }
     if(activeProject){ e.preventDefault(); stopActiveProject(); }
   });
 
@@ -1301,7 +1452,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     auth:Object.freeze({signInWithGoogle,signOut}),
     addProject(project,options={}){const p=normalizeProject(project);upsertSearchItem(p);const el=mountProject(p,options);renderSearch($('#searchInput').value);return el;},
     play(article){setProjectPlaying(article,true);},stop(){stopActiveProject();},next(article=centeredProject()){return scrollToAdjacentProject(article,1);},previous(article=centeredProject()){return scrollToAdjacentProject(article,-1);},
-    removeProject:deleteOwnedProject,openProfile,normalizeProject,normalizeEmbedUrl,instrumentProjectHTML,brandLogoDataURL:BRAND_LOGO_DATA_URL
+    removeProject:deleteOwnedProject,openProfile,openComments,normalizeProject,normalizeEmbedUrl,instrumentProjectHTML,brandLogoDataURL:BRAND_LOGO_DATA_URL
   });
   renderProfile();
   bootstrapFirebase();
