@@ -15,9 +15,47 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
+      - run: python3 scripts/vendor-defaults.py
       - run: node scripts/sync-inline.mjs --check
+      - run: node --check js/app.js && node --check js/firebase-service.js
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
-      - run: npx firebase emulators:exec --project demo-rapidfire --only auth,firestore,database,storage "npm test"
+      - run: npx firebase emulators:exec --project demo-rapidfire --only auth,firestore,database,storage "npm test && npm test && npm test"
+      - run: node scripts/build-test-service.mjs
+      - run: npx firebase emulators:exec --project demo-rapidfire --only auth,firestore,database,storage "RAPIDFIRE_EMULATOR_E2E=1 npx playwright test --repeat-each=2"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rapidfire-test-evidence
+          path: |
+            test-results/
+            *-debug.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rapidfire-verified-site
+          path: dist/
+  persist-assets:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/firebase-social-sidebar'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/firebase-social-sidebar
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - run: python3 scripts/vendor-defaults.py
+      - name: Preserve verified assets and lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json projects/defaults
+          if ! git diff --cached --quiet; then
+            git commit -m "Vendor verified embedded projects and pinned Flash player"
+            git push origin HEAD:fix/firebase-social-sidebar
+          fi

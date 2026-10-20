@@ -6,6 +6,7 @@ const {ref,set,get,update,push}=require('firebase/database');
 let env;
 before(async()=>{
   env=await initializeTestEnvironment({projectId:'demo-rapidfire',firestore:{rules:fs.readFileSync('firestore.rules','utf8')},database:{rules:fs.readFileSync('database.rules.json','utf8')},storage:{rules:fs.readFileSync('storage.rules','utf8')}});
+  await env.clearFirestore();await env.clearDatabase();
 });
 after(async()=>env?.cleanup());
 async function profile(id,claims={}){
@@ -99,4 +100,35 @@ test('optional Storage rules permit own files and deny cross-account overwrite/d
   await assertFails(uploadBytes(storageRef(bob,'avatars/alice/photo'),new Uint8Array([4])));
   await assertFails(deleteObject(storageRef(bob,'avatars/alice/photo')));
   await assertSucceeds(deleteObject(storageRef(alice,'avatars/alice/photo')));
+});
+
+test('administrative privileges, safe runtime URLs and trusted built-ins stay with the verified administrator',async()=>{
+  const own=await profile('ordinary'),admin=env.authenticatedContext('owner-auth',{email:'timmiballz22@gmail.com',email_verified:true});
+  for(const patch of [{admin:true},{isAdmin:true},{role:'admin'},{roles:['admin']}])await assertFails(updateDoc(doc(own,'users','ordinary'),patch));
+  await assertFails(setDoc(doc(own,'admin','settings'),{enabled:true}));
+  await assertSucceeds(setDoc(doc(admin.firestore(),'admin','settings'),{enabled:true}));
+  await assertFails(setDoc(doc(own,'projects','forged-builtin'),{id:'forged-builtin',ownerUserId:'ordinary',sourceType:'builtin',published:true}));
+  await assertFails(setDoc(doc(own,'projects','script-frame'),{id:'script-frame',ownerUserId:'ordinary',sourceType:'embed',embedUrl:'javascript:parent.alert(1)',published:true}));
+  await assertSucceeds(setDoc(doc(own,'projects','normal-upload'),{id:'normal-upload',ownerUserId:'ordinary',sourceType:'html',published:true}));
+  await assertFails(updateDoc(doc(own,'projects','normal-upload'),{sourceType:'builtin'}));
+  await assertFails(set(ref(env.authenticatedContext('ordinary').database(),'admin/settings'),{enabled:true}));
+  await assertSucceeds(set(ref(admin.database(),'admin/settings'),{enabled:true}));
+});
+test('legacy own profiles can repair missing auth metadata while retaining other fields',async()=>{
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await setDoc(doc(ctx.firestore(),'users','legacy'),{id:'legacy',handle:'legacy',handleLower:'legacy',favoriteColor:'blue'});
+    await setDoc(doc(ctx.firestore(),'handles','legacy'),{profileId:'legacy'});
+  });
+  const own=env.authenticatedContext('legacy').firestore(),other=env.authenticatedContext('other').firestore();
+  await assertSucceeds(updateDoc(doc(own,'users','legacy'),{authUid:'legacy',bio:'Updated',avatarUrl:'data:image/webp;base64,'+'A'.repeat(60000)}));
+  assert.equal((await getDoc(doc(own,'users','legacy'))).data().favoriteColor,'blue');
+  await assertFails(updateDoc(doc(other,'users','legacy'),{authUid:'other'}));
+});
+test('both databases share one canonical MaxP identity',async()=>{
+  const owner=env.authenticatedContext('owner-uid',{email:'timmiballz22@gmail.com',email_verified:true}).database();
+  await assertSucceeds(set(ref(owner,'social/projects/canonical/likes/user-maxp'),{at:1}));
+  await assertFails(set(ref(owner,'social/projects/canonical/likes/owner-uid'),{at:1}));
+  const unverified=env.authenticatedContext('intruder',{email:'timmiballz22@gmail.com',email_verified:false}).database();
+  await assertFails(set(ref(unverified,'social/projects/canonical/likes/user-maxp'),{at:1}));
+  await assertFails(set(ref(unverified,'admin/settings'),{enabled:false}));
 });

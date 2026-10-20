@@ -293,7 +293,26 @@
   .section-label{margin:14px 0 8px;color:#a7a7ad;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
   .social-pending{opacity:.58;pointer-events:none}
 
-  .comments-modal .modal{width:min(680px,100%)}
+
+  .comments-modal{display:flex;justify-content:flex-end;align-items:stretch;padding:0;z-index:60}
+  .comments-modal .modal{width:min(440px,100%);height:100%;height:100dvh;max-height:none;border-radius:18px 0 0 18px;display:flex;flex-direction:column;margin:0;padding:24px;padding-top:max(24px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(100%);transition:transform .18s ease;overflow:hidden}
+  .comments-modal.open .modal{transform:translateX(0)}
+  .comments-modal .modal-head{flex:none;align-items:flex-start;gap:12px}
+  .comments-modal .modal-head h2{overflow-wrap:anywhere;font-size:20px;line-height:1.35}
+  .comments-modal .comments-list{flex:1;min-height:0;max-height:none;align-content:start;overscroll-behavior:contain}
+  .comments-modal .comment-composer{flex:none}
+  .comments-modal .comment-composer textarea{resize:none;max-height:140px}
+  .comments-modal .comment-composer-actions{align-items:flex-end}
+  .comments-modal .comment-composer-actions .publish{width:auto;min-width:105px;margin:0}
+  .comments-modal .comment-auth-hint{overflow-wrap:anywhere;min-width:0}
+  .comments-modal .close{flex:none}
+  #confirmDialog{color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:18px;width:min(420px,calc(100% - 32px));padding:24px;z-index:65}
+  #confirmDialog::backdrop{background:rgba(0,0,0,.65)}
+  #confirmDialog .confirm-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:20px}
+  button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  @media(max-width:600px){.comments-modal .modal{border-radius:0;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}}
+  @media(prefers-reduced-motion:reduce){.comments-modal,.comments-modal .modal{transition:none}}
+
   .comments-list{display:grid;gap:10px;margin:14px 0;max-height:min(52vh,520px);overflow:auto;padding-right:3px}
   .comment-row{position:relative;padding:12px 12px 11px;border:1px solid #3d3d42;background:#29292d;border-radius:14px}
   .comment-row p{margin:9px 0 0;color:#e1e1e4;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;padding-right:48px}
@@ -313,7 +332,7 @@
 </style>
 <meta content="RapidFire — discover, play, publish and follow interactive web projects." name="description"/></head>
 <body>
-<div class="app">
+<div class="app" id="app">
 <main class="view">
 <section class="screen active" data-screen="home" id="homeScreen">
 <div class="feed" id="feed"></div>
@@ -377,6 +396,7 @@
 <div class="info-meta" id="infoExtra"></div>
 </div>
 </div>
+<dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage"><h2 id="confirmTitle">Delete item</h2><p id="confirmMessage"></p><div class="confirm-actions"><button class="mini-btn" id="confirmCancel" type="button" autofocus>Cancel</button><button class="danger-btn" id="confirmDelete" type="button">Delete</button></div></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
@@ -391,7 +411,7 @@
     <div class="modal-head"><h2 id="commentsTitle">Comments</h2><button aria-label="Close comments" class="close" id="closeComments">×</button></div>
     <div class="comments-list" id="commentsList"><div class="empty-compact">Loading comments…</div></div>
     <div class="comment-composer">
-      <textarea id="commentText" maxlength="500" placeholder="Add a comment…"></textarea>
+      <label class="comment-auth-hint" for="commentText">Your comment</label><textarea id="commentText" maxlength="500" placeholder="Add a comment…"></textarea>
       <div class="comment-composer-actions"><div class="comment-auth-hint" id="commentAuthHint">Sign in to comment</div><button class="publish" id="commentSubmit" type="button">Comment</button></div>
     </div>
   </div>
@@ -494,10 +514,9 @@ async function createFirebaseService(firebaseConfig, options={}){
           createdAt:current?.createdAt||fsMod.serverTimestamp(),
           updatedAt:fsMod.serverTimestamp()
         };
-        // Full replacement deliberately strips legacy/unknown fields so old profile
-        // documents cannot make the current strict schema fail during Google login.
+        // Preserve legacy metadata while binding ownership to Firebase Auth.
         tx.set(handleRef,{profileId:profile.id,updatedAt:fsMod.serverTimestamp()});
-        tx.set(userRef,payload);
+        tx.set(userRef,payload,{merge:true});
       });
       const resolved=await fsMod.getDoc(userRef);
       return resolved.exists()?{id:resolved.id,...resolved.data()}:profile;
@@ -516,8 +535,10 @@ async function createFirebaseService(firebaseConfig, options={}){
       if(desired.toLowerCase()==='maxp' && profileId!=='user-maxp') throw new Error('That handle is reserved.');
       const userRef = fsMod.doc(firestore,'users',profileId);
       const newHandleRef = fsMod.doc(firestore,'handles',desired.toLowerCase());
-      const oldLower = normalizeHandle(oldHandle).toLowerCase();
       await fsMod.runTransaction(firestore, async tx => {
+        const userSnap=await tx.get(userRef);
+        if(!userSnap.exists())throw new Error('Your profile is not ready. Sign in again and retry.');
+        const oldLower=normalizeHandle(userSnap.data().handle).toLowerCase();
         const newSnap = await tx.get(newHandleRef);
         if (newSnap.exists() && newSnap.data().profileId !== profileId) throw new Error('That handle is already taken.');
         let oldRef=null, oldSnap=null;
@@ -692,14 +713,16 @@ async function createFirebaseService(firebaseConfig, options={}){
     async setPresence(profileId,onError=()=>{}){
       const statusRef=dbMod.ref(realtime,`presence/${key(profileId)}`);
       const connectedRef=dbMod.ref(realtime,'.info/connected');
+      const disconnect=dbMod.onDisconnect(statusRef);let disposed=false;
       const unsubscribe=dbMod.onValue(connectedRef,async snap=>{
-        if(snap.val()!==true)return;
+        if(snap.val()!==true||disposed)return;
         try{
-          await dbMod.onDisconnect(statusRef).set({online:false,lastChanged:dbMod.serverTimestamp()});
+          await disconnect.set({online:false,lastChanged:dbMod.serverTimestamp()});
+          if(disposed){await disconnect.cancel();return;}
           await dbMod.set(statusRef,{online:true,lastChanged:dbMod.serverTimestamp()});
         }catch(error){onError(error);}
       },onError);
-      return unsubscribe;
+      return async()=>{disposed=true;unsubscribe();try{await disconnect.cancel();await dbMod.set(statusRef,{online:false,lastChanged:dbMod.serverTimestamp()});}catch(error){onError(error);}};
     },
     subscribePresence(profileId,callback,onError=()=>{}){
       return dbMod.onValue(dbMod.ref(realtime,`presence/${key(profileId)}`),snap=>callback(snap.val()||{online:false}),onError);
@@ -725,6 +748,13 @@ async function createFirebaseService(firebaseConfig, options={}){
   const toast = $('#toast');
   let toastTimer = 0;
   function showToast(message){ clearTimeout(toastTimer); toast.textContent = message; toast.classList.add('show'); toastTimer = setTimeout(()=>toast.classList.remove('show'), 1800); }
+
+
+  function confirmAction(message){
+    const dialog=$('#confirmDialog');if(dialog.open)return Promise.resolve(false);$('#confirmMessage').textContent=message;
+    return new Promise(resolve=>{const onClose=()=>{dialog.removeEventListener('close',onClose);resolve(dialog.returnValue==='delete');};dialog.addEventListener('close',onClose);dialog.returnValue='cancel';dialog.showModal();$('#confirmCancel').focus();});
+  }
+  $('#confirmCancel').addEventListener('click',()=>$('#confirmDialog').close('cancel'));$('#confirmDelete').addEventListener('click',()=>$('#confirmDialog').close('delete'));
 
   // ---------- reusable project templates ----------
   const BRAND_LOGO_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAO4AAADuCAYAAAA+7jsiAAANsklEQVR4AeydS3bcNhNGW1mS51lBhhlkjR546BV47i0p/mRBh24RfOBVVcA954fZIolC4RZvA922/vz1eDxeaTDgGYj1DEjcx+vXf2gw4BkI8gz8epN9vImrFzQIQCAOAcSNUysyhcAHAcT9QPHpBScg4JYA4rotDYlBIE8AcfNsuAIBtwQQ121pSAwCeQKIm2fDlTwBrhgTQFzjAjA8BEoIIG4JNfpAwJgA4hoXgOEhUEIAcUuo0QcCeQJDriDuEMwMAoG2BBC3LU+iQWAIAcQdgplBINCWAOK25Uk0CAwhEFTcIWwYBAJuCSCu29KQGATyBBA3z4YrEHBLAHHdlobEIJAngLh5NkGvkPYKBBB3hSozx+kIIO50JWVCKxBA3BWqzBynI4C405WUCeUJzHMFceepJTNZiADiLlRspjoPAcQ9qeXLf98fpe0kNJchUExgenFLpUv9Xv/++1HaUgwdiytERwjsEGgv7s4gtaf04Je2UulSv5rcUwwdU/418Xr0TXndPfbIhZjXCYQQV9PRw1/S1NdDS7knQTzklHJ4/fnv425L86g9phw43iMQRtx70/J797PAevD9ZpvP7K7oufs1/xYtn+mcVxDXqK5JYA2fHly9Xq3lhL57PjGsPUbhj7gjK7UzVhJYx/TQ7dzGqRMCd0XP3Z9qcPV4kla3y4jbDe39wJJXbfvQ3I9CjxoCOaH3zteMU9sXcWsJdugvedUUOkms1zQIJAKIm0g4PEre1BDYYYEMU0JcQ/h3hn4WWCLf6e/+XhK8RQBxb+GyvzkJrEwkr5pe09YigLhB650E1lHyqgWdCmkXEEDcAmjeukheNcmr5i0/8mlPAHHbMzWLKHnNBmfgfgR2IiPuDhROQcA7AcT1XiHyg8AOAcTdgcIpCHgngLjeK0R+ENghgLjvUGY56AsqvlmepZr5eSwr7suPH3kqXIGAcwLLiqu6SN6jpntoEPBIYGlxX7/+8zhqR1LrmseCktMaBJYW96zER1LrmuQ9amfxo1wnT38EELeiJpI31xRWUutIg0BrAiHElRzRJFDOrYtFPAgkAiHETclGO0reaG840Rivmi/iDqg88g6AbDSE1bCI25m8Vt3OQ7gN//Ll22OWtgdZ/wdyVv/YBXH3KtL4nORdddXV3GdouTegxo/K5XCIexlV/Y2ryltPzj7C0ZuPRXaIO4i6Cj9oKIZZgEAEcacpg+QdseryiwbTPDLZiSBuFk2/CyPk7Zc9kT0QQNzBVdCqO3hIhpuQAOIaFFXysuoagJ9oSMQ1LGYDeQ2zZ2hLAohrRF+rrtHQDDsBAcQ1LKLkZdU1LEDgoRHXuHjIa1yAoMMjbtDCkfYpgalvQFwH5WXVdVCEYCkgroOC6TdM9K+dHKRCCkEIIG6QQpEmBLYEEHdLw+A1q60B9AmGrBR3AgKTTkFbb70pTDq95aeFuIaPgMSSYIYpMHRQAsuKK2EkTtC6kfbiBJYV17ruvGlYVyD2+IjbrX7ngbXqn9/FHRD4TABxPzPhDATcEwgj7kz/ukjbZFZb9264TjCMuK4pkhwEBhNA3MHAWW0FnFZLAHFrCdIfAgYEEHcgdFbbgbAnHwpxJy8w05uTAOIOqqtW20FDvQ2j/0scfRP/9gN/BCJwLVXEvcapyV2j/goIaZuUy3UQxHVdnvvJSdr7vegRjQDiDqiYtsmjVltNx8sWOf33YzX/kqa50PYJIO4+l5BntdrekVYySa6ek1X80qb8alrPeVnHXlPcjtT3HrQRq+1daTsiaBa6VPjUb68WV881m0SnQIhbAXbvIZCkz61iiEtdZ5T20sRPbkoClxz3apvOnQw75DLiXsScirY9Pguqny+Ga3abpG0WjEAfBHKyf9xg/AJxMwXYCqrXkvK5ZboOO52kvfO5dlhyDNSVAOL+wisxn5s3SX+lufu/5tLujsJJbwSWF1fCPkuqn70V6jkfrbZI+0yl788vX749vDBfWlwJqta33O2jI217ptEiLi1utGIpX6QVBRriBnoGJG2gdOdL1dGMENdRMY5SSdJ6+Yx1lCvX+hNA3P6Mm42AtM1Qhg+EuAFKqNUWaQMUamCKiDsQdslQSFtCbf4+7sSdH/n1GSLtdVar3RlKXG0X9TCvUKRV5rlCLXvMMZS4PQB4jJmk1RuVx/zIyZ4A4trXYDcDpN3Fwsl3Aoj7DsLLQattTlovOZKHPQHEta/BRwZI+4HC3QtPv2AgOIgrCrSuBPTQ77Wug04eHHGdFVi/ZugspSbpaPv/3PZk1rkmA04eBHEdFTjirxjW4HsWOf0seffa0VirXUPc1SoeYL5J4O1RaSOzKPxuiPubg5s/terOul2ugbyVePt6T2adqxkrQl/EjVAlcswS2Eq8fS1591o2ULALiBusYKR7jcBW4u3rPZl17lpUP3fdEddP1pNnwna5X4G3Em9fS9691i+TusihxNVnPz3UdVOmNwQ+E9hKvH2dZP7cw/ZMKHFtUTH6igS2EnuaP+J6qsYmF+0stMPYnOIlBD4IIO4HiqoXdIbAUAKIOxQ3g0GgDQHEvchRv7lz8dZmt7FdboZyukBhxNXnPT3I01WACUGggEAYcQvmRhcfBMiiAwHEvQGV7fINWNzalQDidsVLcAj0IYC4F7hqpdVfxF+4tdst+ozfLTiBwxFA3Bslk7yS+EaXJrfypVwTjB6DFOeEuMXo6AgBOwIhxNU2cfVVR/MXB7tHhZE9EQghridgVttlTwzIxZ4A4p7UQJ9pJevJbVyGwFACC4g7lGfXwdgud8UbKjjiFpRLK7BW4oKudIFAEwKI2wQjQSAwloB7cfVNqraIY7H4HU0sxMRvhmQ2goB7cUdAyI2h7bC2xUfXc9dinCfLqAQQt7ByR0IXhqQbBC4TQNzLqPzcyHbZTy2sMkFcK/KMC4EKAohbAU/bZX0OrghR1ZUvqarwnXT2fdm1uHowtS20QGgp5JX5WnG5khv39CfgWtz+0z8eQSvq8R1chYANAcSt5C65rVZnrbralVROge4BCSBuwKKRMgRsxYU/BCBQRABxi7D92Ynt8p88+Kk/AcTdYazPrJJx5xKnIOCCgFtx9aWLvnxxQYkkIOCMgFtxnXE6TUcrtFbq0xuv3nDjPr3B6Y3uRhduDU4AcYMXkPTXJIC4a9Z96Kxff/77YEfQFjniPvHUdlfb3qfT7n9ku+y+RE0TRNyGOCW8xG8YklB7BDj3cCmutlVaQajPfQJid78XPaIRcCluNIhe8uXNzksl+ueBuI0Zs11uDJRwuwQQd4NFn08l3uZUuJdaddkuhyvb7YSz4t6ORAcIQGAYAcTtgFqrtlbvDqEJCYE3Au7E1TZP27237PijiID4iWNRZzqFIOBO3BDUSBICxgQQ970A2tpqi/v+4+HhykXFUswr93IPBO4SQNy7xILcz3Y5SKEK00TcQnB0g4AlAcTtSJ/tcke4i4dG3IkfAIvt8sQ4XU3Nlbj6Kww9bKMJ6UskrY6jx2U8CJQScCVu6SToB4HVCCBu54prJdeK3nmYbHjtYLSTyd7AhZAEEDdk2Ug6IoGWOSNuS5qOY7HqOi5OQWrLi6ttrLazBewud1F8jXO5Q+MbtV1uHJJwxgTciKsVgQfM+Glg+DAE3IgbhljQRPWmqDfHoOmT9hOB2cR9mp6fH623y35IkEkLAojbgiIxIDCYwNLiWn5hNLjOb8OxXX7DMMUfS4urCmoLq+OIprFWe7MYwXXFMVyIqy9NtBqsWICBc2aoiQi4EHcinu6nojdIvVG6T5QEDwkg7iGePhfZLvfhulJUxB1cbX3OHTwkw01IYFlxteqtKhHb5U8mhzuxrLjhKkXCENgQQNwNjFEvtdJrxa8dTzFKW+3Y9LclYC6uvuHU1s0Wg83opdKlfnoDqGk2s2bUFgTMxW0xiYgxaoRLfSPOm5zbEBgobpuEW0TRiqWHv0UsYkDAgsCS4lqAZkwItCSAuC1pEgsCgwgg7iDQDAOBlgRMxV35G+U/i8hPELhHwFTce6m2uZsvptpwJIotgeXEtcXN6BBoQwBx23AkCgSGEkDcobgZ7D4BeuwRQNw9KpyDgHMCZuLqG+XRbPhi6jPxly/fHjXtc0TOjCBgJq4mt+ovF2juHpr+2Wdtuyq9h/nOlIOpuDOBXHUud8RflVGPef8Wt0dkYkIAAt0IIG43tASGQD8Cy4jLF1P9HiIijyewjLjj0TIiBPoRMBE3/VWQVsG91m+6BZHpAgGHBEzEPfsmck/mdM4hQ1KCwHACJuKezfJI7CRw7ngWm+sQmIGAS3GPwB5JrWs5oXXtKC7XIBCJQDhxz+BK0L121o/rBQToYkZgOnHNSDIwBAYSQNyBsBkKAq0IIG4rksSBwEACiDsQNkMtRKDzVBG3M2DCQ6AHAcTtQZWYEOhMAHE7AyY8BHoQQNweVIkJgc4EQovbmQ3hIeCWAOK6LQ2JQSBPAHHzbLgCAbcEENdtaUgMAnkCiJtnE/oKyc9NAHHnri+zm5QA4k5aWKY1NwHEnbu+zG5SAog7aWGZVp7ADFcQd4YqMoflCCDuciVnwjMQQNwZqsgcliOAuMuVnAnPQKCXuDOwYQ4QcEsAcd2WhsQgkCeAuHk2XIGAWwKI67Y0JAaBPAHEzbPpdYW4EKgm8Cau/rOXtO8PGMAgwjMg6/8HAAD//0Bi6L8AAAAGSURBVAMALNyChUxyOtoAAAAASUVORK5CYII=';
@@ -789,7 +819,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     }:{...raw,id:candidateId};
     const user=normalizeUser(mergedRaw);userRegistry.set(user.id,user);return user;
   }
-  function findUserByHandle(handle){const key=String(handle||'').trim().toLowerCase();return [...userRegistry.values()].find(user=>user.handle.toLowerCase()===key)||null;}
+  function findUserByHandle(handle){const key=String(handle||'').trim().replace(/^@+/,'').toLowerCase();return [...userRegistry.values()].find(user=>user.handle.toLowerCase()===key)||null;}
   function ensureUserByHandle(handle,seed={}){return findUserByHandle(handle)||registerUser({...seed,id:seed.id||userIdFromHandle(handle),handle,displayName:seed.displayName||handle});}
   function userAvatarHTML(user,className='avatar'){
     const u=user||{};
@@ -811,7 +841,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       schemaVersion:PROJECT_SCHEMA_VERSION,
       id:String(raw.id||`project-${Math.random().toString(36).slice(2,9)}`),ownerUserId:owner?.id||'',
       isDefault:!!raw.isDefault,originalCreator:String(raw.originalCreator||''),sourceUrl:String(raw.sourceUrl||''),license:String(raw.license||''),licenseUrl:String(raw.licenseUrl||''),
-      title:String(raw.title||'Untitled Project'),creator:owner?.handle||'Default Project',desc:String(raw.desc||raw.description||'No description yet.'),
+      title:String(raw.title||'Untitled Project'),creator:owner?.handle||'Project Embedded',desc:String(raw.desc||raw.description||'No description yet.'),
       tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
       views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
       thumbnailUrl:String(raw.thumbnailUrl||''),type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
@@ -825,7 +855,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   }
   function embedHost(url){ try{ return new URL(url).host || 'external project'; }catch(_){ return 'external project'; } }
   function renderHeader(project){
-    if(project.isDefault)return `<header class="creator-bar">${renderBrandLogo()}<span class="creator-identity"><span class="creator-name">Default Project</span><span class="creator-hint">${escapeHTML(project.originalCreator||'RapidFire starter')}</span></span><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
+    if(project.isDefault)return `<header class="creator-bar">${renderBrandLogo()}<span class="creator-identity"><span class="creator-name">Project Embedded</span><span class="creator-hint">${escapeHTML(project.originalCreator||'RapidFire starter')}</span></span><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
     const owner=userRegistry.get(project.ownerUserId)||ensureUserByHandle(project.creator,{id:project.ownerUserId});
     const suffix=project.local?'local publish':`${escapeHTML(project.views)} views`;
     return `<header class="creator-bar">${renderBrandLogo()}<button class="creator-profile-hitbox" data-open-profile="${escapeHTML(project.ownerUserId)}" type="button" aria-label="Open ${escapeHTML(owner.handle)} profile">${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.displayName)}</span><span class="creator-hint">@${escapeHTML(owner.handle)}</span></span></button><button class="follow-btn" data-follow data-follow-user="${escapeHTML(project.ownerUserId)}">Follow</button><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)} · ${suffix}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
@@ -931,7 +961,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     const field = $('.local-runner-field', article);
     const frame = $('iframe', article);
     return {
-      start(){ if(!frame || !project.embedUrl) return; frame.removeAttribute('srcdoc'); frame.src = project.embedUrl; field?.classList.add('is-loaded'); },
+      start(){const url=normalizeEmbedUrl(project.embedUrl);if(!frame||!url){setProjectPlaying(article,false);showToast('This project needs a valid HTTP(S) URL.');return;} frame.removeAttribute('srcdoc'); frame.src = url; field?.classList.add('is-loaded'); },
       stop(){ if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
       destroy(){ this.stop(); }
     };
@@ -1110,14 +1140,14 @@ async function createFirebaseService(firebaseConfig, options={}){
   function mountProject(raw, {prepend=false}={}){
     const project = normalizeProject(raw); projectRegistry.set(project.id, project);
     const old = $(`.project[data-project-id="${CSS.escape(project.id)}"]`, feed);
-    if(old){ feedObserver.unobserve(old); runtimeByArticle.get(old)?.destroy(); if(activeProject===old) activeProject=null; old.remove(); }
+    if(old){ socialUnsubByArticle.get(old)?.(); feedObserver.unobserve(old); runtimeByArticle.get(old)?.destroy(); if(activeProject===old) activeProject=null; old.remove(); }
     const article = projectArticle(project); prepend ? feed.prepend(article) : feed.append(article);
     runtimeByArticle.set(article, createRuntime(article,project)); feedObserver.observe(article); bindProjectSocial(article,project); return article;
   }
 
   // ---------- feed data ----------
   // Embedded from projects/defaults/catalog.json by scripts/sync-inline.mjs.
-  const defaultCatalog = /* DEFAULT_CATALOG_START */[{"id":"default-flxinvaders","title":"FlxInvaders","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Flx-Invaders","license":"MIT","licenseUrl":"projects/defaults/flxinvaders-LICENSE.txt","desc":"Defend against waves of pixel invaders. Arrow keys to move, Space to fire.","tags":["flash","arcade","space"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxinvaders.svg","contentUrl":"projects/defaults/flxinvaders.html","downloadUrl":"https://www.flixel.org/flxinvaders/FlxInvaders.swf","sha256":"562ddb1c28bc3ef838fd173ea232f3c2f4e3227e9eebe16965f83a32a1e1d95b"},{"id":"default-2048","title":"2048","originalCreator":"Gabriele Cirulli","sourceUrl":"https://github.com/gabrielecirulli/2048","license":"MIT","licenseUrl":"projects/defaults/2048-LICENSE.txt","desc":"Slide matching tiles together and work toward 2048. Use arrow keys or swipe.","tags":["puzzle","numbers","strategy"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/2048.svg","contentUrl":"projects/defaults/2048/index.html"},{"id":"default-fluid","title":"WebGL Fluid Simulation","originalCreator":"Pavel Dobryakov","sourceUrl":"https://github.com/PavelDoGreat/WebGL-Fluid-Simulation","license":"MIT","licenseUrl":"projects/defaults/fluid-LICENSE.txt","desc":"Paint swirling fluid with your pointer. Explore color, motion, and the simulation controls.","tags":["art","simulation","interactive"],"category":"Art","isDefault":true,"type":"embed","sourceType":"embed","embedUrl":"https://paveldogreat.github.io/WebGL-Fluid-Simulation/","thumbnailUrl":"projects/defaults/fluid.svg"},{"id":"default-mode","title":"Mode","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Mode","license":"MIT","licenseUrl":"projects/defaults/mode-LICENSE.txt","desc":"Explore a destructible pixel platformer. Follow the on-screen keyboard controls.","tags":["flash","platformer","action"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/mode.svg","contentUrl":"projects/defaults/mode.html","downloadUrl":"https://www.adamatomic.com/mode/Mode.swf","sha256":"7a6cd90db357fd98201305da208ae94bdaacb43b1622cc0f8d48a87e4b9f8d2d"},{"id":"default-0hh1","title":"0h h1","originalCreator":"Martin Kool / Q42","sourceUrl":"https://github.com/florisluiten/0hh1","license":"MIT","licenseUrl":"projects/defaults/0hh1-LICENSE.txt","desc":"A little logic game: balance the red and blue tiles without triples. Tap tiles to change their color.","tags":["logic","puzzle","tiles"],"category":"Game","isDefault":true,"type":"embed","sourceType":"embed","embedUrl":"https://0hh1.com/","thumbnailUrl":"projects/defaults/0hh1.svg"},{"id":"default-astray","title":"Astray","originalCreator":"wwwtyro","sourceUrl":"https://github.com/wwwtyro/Astray","license":"Unlicense","licenseUrl":"projects/defaults/astray-LICENSE.txt","desc":"Guide a ball through an increasingly complex maze. Use the arrow keys.","tags":["maze","3d","physics"],"category":"Game","isDefault":true,"type":"embed","sourceType":"embed","embedUrl":"https://wwwtyro.github.io/Astray/","thumbnailUrl":"projects/defaults/astray.svg"},{"id":"default-flxteroids","title":"FlxTeroids","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/FlxTeroids","license":"MIT","licenseUrl":"projects/defaults/flxteroids-LICENSE.txt","desc":"Pilot a tiny ship through an asteroid field. Arrow keys to steer and thrust, Space to fire.","tags":["flash","arcade","asteroids"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxteroids.svg","contentUrl":"projects/defaults/flxteroids.html","downloadUrl":"https://www.flixel.org/flxteroids/FlxTeroids.swf","sha256":"7fe5f2abd50c32cd1d451d4e587223438b7d3a0166be9d6153143583e20a7cf3"},{"id":"default-hextris","title":"Hextris","originalCreator":"Logan Engstrom, Garrett Finucane, Noah Moroze, and Michael Yang","sourceUrl":"https://github.com/Hextris/hextris","license":"GPL-3.0-or-later","licenseUrl":"projects/defaults/hextris-LICENSE.txt","desc":"Rotate the hexagon to stack and match falling colors. Use Left/Right or tap the sides.","tags":["puzzle","arcade","reflex"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/hextris.svg","contentUrl":"projects/defaults/hextris/index.html"}]/* DEFAULT_CATALOG_END */;
+  const defaultCatalog = /* DEFAULT_CATALOG_START */[{"id":"default-flxinvaders","title":"FlxInvaders","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Flx-Invaders","license":"MIT","licenseUrl":"projects/defaults/flxinvaders-LICENSE.txt","desc":"Defend against waves of pixel invaders. Arrow keys to move, Space to fire.","tags":["flash","arcade","space"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxinvaders.svg","contentUrl":"projects/defaults/flxinvaders.html","downloadUrl":"https://www.flixel.org/flxinvaders/FlxInvaders.swf","sha256":"562ddb1c28bc3ef838fd173ea232f3c2f4e3227e9eebe16965f83a32a1e1d95b"},{"id":"default-2048","title":"2048","originalCreator":"Gabriele Cirulli","sourceUrl":"https://github.com/gabrielecirulli/2048","license":"MIT","licenseUrl":"projects/defaults/2048-LICENSE.txt","desc":"Slide matching tiles together and work toward 2048. Use arrow keys or swipe.","tags":["puzzle","numbers","strategy"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/2048.svg","contentUrl":"projects/defaults/2048/index.html"},{"id":"default-fluid","title":"WebGL Fluid Simulation","originalCreator":"Pavel Dobryakov","sourceUrl":"https://github.com/PavelDoGreat/WebGL-Fluid-Simulation","license":"MIT","licenseUrl":"projects/defaults/fluid-LICENSE.txt","desc":"Paint swirling fluid with your pointer. Explore color, motion, and the simulation controls.","tags":["art","simulation","interactive"],"category":"Art","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/fluid.svg","contentUrl":"projects/defaults/fluid/index.html"},{"id":"default-mode","title":"Mode","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Mode","license":"MIT","licenseUrl":"projects/defaults/mode-LICENSE.txt","desc":"Explore a destructible pixel platformer. Follow the on-screen keyboard controls.","tags":["flash","platformer","action"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/mode.svg","contentUrl":"projects/defaults/mode.html","downloadUrl":"https://www.adamatomic.com/mode/Mode.swf","sha256":"7a6cd90db357fd98201305da208ae94bdaacb43b1622cc0f8d48a87e4b9f8d2d"},{"id":"default-0hh1","title":"0h h1","originalCreator":"Martin Kool / Q42","sourceUrl":"https://github.com/florisluiten/0hh1","license":"MIT","licenseUrl":"projects/defaults/0hh1-LICENSE.txt","desc":"A little logic game: balance the red and blue tiles without triples. Tap tiles to change their color.","tags":["logic","puzzle","tiles"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/0hh1.svg","contentUrl":"projects/defaults/0hh1/index.html"},{"id":"default-astray","title":"Astray","originalCreator":"wwwtyro","sourceUrl":"https://github.com/wwwtyro/Astray","license":"Unlicense","licenseUrl":"projects/defaults/astray-LICENSE.txt","desc":"Guide a ball through an increasingly complex maze. Use the arrow keys.","tags":["maze","3d","physics"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/astray.svg","contentUrl":"projects/defaults/astray/index.html"},{"id":"default-flxteroids","title":"FlxTeroids","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/FlxTeroids","license":"MIT","licenseUrl":"projects/defaults/flxteroids-LICENSE.txt","desc":"Pilot a tiny ship through an asteroid field. Arrow keys to steer and thrust, Space to fire.","tags":["flash","arcade","asteroids"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxteroids.svg","contentUrl":"projects/defaults/flxteroids.html","downloadUrl":"https://www.flixel.org/flxteroids/FlxTeroids.swf","sha256":"7fe5f2abd50c32cd1d451d4e587223438b7d3a0166be9d6153143583e20a7cf3"},{"id":"default-hextris","title":"Hextris","originalCreator":"Logan Engstrom, Garrett Finucane, Noah Moroze, and Michael Yang","sourceUrl":"https://github.com/Hextris/hextris","license":"GPL-3.0-or-later","licenseUrl":"projects/defaults/hextris-LICENSE.txt","desc":"Rotate the hexagon to stack and match falling colors. Use Left/Right or tap the sides.","tags":["puzzle","arcade","reflex"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/hextris.svg","contentUrl":"projects/defaults/hextris/index.html"},{"id":"default-tetris","title":"Tetris","originalCreator":"Jake Gordon and contributors","sourceUrl":"https://github.com/jakesgordon/javascript-tetris","license":"MIT","licenseUrl":"projects/defaults/tetris/LICENSE","desc":"Stack falling blocks and complete lines. Space to start; arrow keys to move and rotate.","tags":["puzzle","arcade","blocks"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/tetris.svg","contentUrl":"projects/defaults/tetris/index.html"},{"id":"default-breakout","title":"Breakout","originalCreator":"Jake Gordon and contributors","sourceUrl":"https://github.com/jakesgordon/javascript-breakout","license":"MIT · sound assets CC BY-ND 2.0","licenseUrl":"projects/defaults/breakout/LICENSE","desc":"Clear the bricks with a bouncing ball. Space to start; arrow keys or touch to move the paddle.","tags":["arcade","physics","reflex"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/breakout.svg","contentUrl":"projects/defaults/breakout/index.html"}]/* DEFAULT_CATALOG_END */;
   const defaultProjects=defaultCatalog.map(p=>normalizeProject({...p,trend:true}));
   const baseProjects = [
     {id:'dash',title:'Sigma Geometry Dash',creator:'User67',desc:'A polished neon flight challenge with scoring, hazards and quick-restart arcade pacing. Tap or press Space to boost.',tags:['arcade','rhythm','skill'],category:'Game',views:'67M',likes:'6767',saves:'26767',shares:'67',type:'dash',trend:true},
@@ -1149,11 +1179,11 @@ async function createFirebaseService(firebaseConfig, options={}){
     const item={isDefault:project.isDefault,originalCreator:project.originalCreator,sourceUrl:project.sourceUrl,license:project.license,licenseUrl:project.licenseUrl,projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
     idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
   }
-  function removeLocalProject(projectId,{skipConfirm=false}={}){
+  async function removeLocalProject(projectId,{skipConfirm=false}={}){
     const project=projectRegistry.get(projectId);if(!project?.local)return false;
-    if(!skipConfirm&&!confirm(`Delete "${project.title}"? This removes the local published copy.`))return false;
+    if(!skipConfirm&&!await confirmAction(`Delete "${project.title}"? This removes the local published copy.`))return false;
     const article=$(`.project[data-project-id="${CSS.escape(projectId)}"]`,feed);
-    if(article){if(activeProject===article)setProjectPlaying(article,false);feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}
+    if(article){socialUnsubByArticle.get(article)?.();if(activeProject===article)setProjectPlaying(article,false);feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}
     projectRegistry.delete(projectId);const index=items.findIndex(i=>i.localId===projectId);if(index>=0)items.splice(index,1);
     safeStore.set('rapidfire.local.projects.v2',safeStore.get('rapidfire.local.projects.v2',[]).filter(p=>p.id!==projectId));
     renderSearch($('#searchInput')?.value||'');if(currentUser){renderProfile();renderProfileTab('projects');}showToast(`${project.title} deleted`);return true;
@@ -1168,7 +1198,8 @@ async function createFirebaseService(firebaseConfig, options={}){
   // ---------- navigation ----------
   const screens = Object.fromEntries($$('.screen').map(s=>[s.dataset.screen,s]));
   function go(screen){
-    if(screen!=='home') stopActiveProject();
+    if(activeCommentProjectId)closeComments();
+    if(screen!=='home'){stopActiveProject();clearProfileSubscriptions();}
     Object.entries(screens).forEach(([key,el])=>el.classList.toggle('active',key===screen));
     $$('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===screen));
     if(screen==='search') setTimeout(()=>$('#searchInput').focus(),80);
@@ -1183,7 +1214,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     $('#infoTitle').textContent=projectEl.dataset.project||'Project'; $('#infoCreator').textContent=`by ${projectEl.dataset.creator||'Unknown creator'}`; $('#infoDescription').textContent=projectEl.dataset.desc||'No description yet.';
     $('#infoTags').innerHTML=tags.map((t,i)=>`<span class="tag ${i===0?'accent':''}">#${escapeHTML(t.replace(/^#/,''))}</span>`).join(''); $('#infoExtra').textContent=projectEl.dataset.category||'RapidFire project';
     if(project?.isDefault){
-      $('#infoCreator').textContent=project.originalCreator?`Created by ${project.originalCreator} · Default Project`:'Default Project';
+      $('#infoCreator').textContent=project.originalCreator?`Created by ${project.originalCreator} · Project Embedded`:'Project Embedded';
       const extra=$('#infoExtra');extra.textContent=`${project.category} · ${project.license||'RapidFire starter'}`;
       for(const [label,url] of [['Original source',project.sourceUrl],['License',project.licenseUrl]]){
         if(!url)continue;const target=new URL(url,location.href);if(!['https:','http:'].includes(target.protocol))continue;
@@ -1235,7 +1266,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     const stop=e.target.closest('[data-stop-play]'); if(stop){ setProjectPlaying(stop.closest('.project'),false); return; }
     const follow=e.target.closest('[data-follow]'); if(follow){
       const target=follow.dataset.followUser;if(!currentUser){showToast('Sign in to follow creators');return;}if(target===currentUser.id){showToast('This is your profile');return;}if(!cloud){showToast('Social service is offline');return;}
-      follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{follow.classList.remove('social-pending');}return;
+      if(follow.disabled)return;follow.disabled=true;follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{follow.classList.remove('social-pending');refreshFollowButtons();}return;
     }
     const like=e.target.closest('[data-like]'); if(like){await runProjectSocialAction(like,'likes');return;}
     const save=e.target.closest('[data-save]'); if(save){await runProjectSocialAction(save,'saves');return;}
@@ -1271,7 +1302,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   async function runProjectSocialAction(button,kind){
     if(!currentUser){showToast(`Sign in to ${kind==='likes'?'like':'save'} projects`);return;}if(!cloud){showToast('Social service is offline');return;}
     const article=button.closest('.project'),projectId=article?.dataset.projectId;if(!projectId)return;
-    button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');}
+    if(button.disabled)return;button.disabled=true;button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');button.disabled=false;}
   }
 
   // ---------- search ----------
@@ -1280,7 +1311,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   function addRecent(value){const v=String(value||'').trim();if(!v)return;recentSearches=[v,...recentSearches.filter(x=>x.toLowerCase()!==v.toLowerCase())].slice(0,5);safeStore.set('rapidfire.recent.v2',recentSearches);}
   function suggestionRow(text,kind){return `<button class="suggestion" data-query="${escapeHTML(text)}"><span class="trend" style="color:${kind==='trend'?'var(--accent)':'#a7a7ad'}">${kind==='trend'?'🔥':'⌕'}</span><span>${escapeHTML(text)}</span></button>`;}
   function renderSearch(query=''){
-    const q=query.trim().toLowerCase();
+    const q=query.trim().toLowerCase().replace(/^@+/,'');
     if(!q){const recentHTML=recentSearches.length?recentSearches.map(x=>suggestionRow(x,'recent')).join(''):'<div class="empty" style="height:auto;padding:18px">No recent searches.</div>';const trendingHTML=items.filter(i=>i.trend).map(i=>suggestionRow(i.title,'trend')).join('');searchContent.innerHTML=`<div class="search-section-head"><span>Recently searched</span><button class="tiny-action" id="clearRecent">Clear</button></div>${recentHTML}<div class="search-section-head"><span>Trending</span></div>${trendingHTML}`;$$('.suggestion',searchContent).forEach(b=>b.addEventListener('click',()=>{addRecent(b.dataset.query);$('#searchInput').value=b.dataset.query;renderSearch(b.dataset.query);}));$('#clearRecent')?.addEventListener('click',()=>{recentSearches=[];safeStore.set('rapidfire.recent.v2',recentSearches);renderSearch();});return;}
     const users=[...userRegistry.values()].filter(u=>[u.handle,u.displayName,u.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
     const result=items.filter(i=>[i.title,i.creator,i.originalCreator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
@@ -1294,27 +1325,68 @@ async function createFirebaseService(firebaseConfig, options={}){
   function openProjectFromSearch(title){const target=$(`.project[data-project="${CSS.escape(title)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast(`${title} is listed, but its playable preview is not loaded yet`);}
   $('#searchInput').addEventListener('input',e=>renderSearch(e.target.value)); $('#searchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addRecent(e.currentTarget.value);renderSearch(e.currentTarget.value);}}); renderSearch();
 
-  // ---------- project comments ----------
+
+  // ---------- project comments: modal right sidebar ----------
   const commentsModal=$('#commentsModal'),commentsList=$('#commentsList'),commentText=$('#commentText'),commentSubmit=$('#commentSubmit'),commentAuthHint=$('#commentAuthHint'),commentsTitle=$('#commentsTitle');
-  function closeComments(){commentUnsub?.();commentUnsub=null;activeCommentProjectId=null;activeComments=[];commentsModal?.classList.remove('open');commentsModal?.setAttribute('aria-hidden','true');}
+  const commentDrafts=new Map(),commentPending=new Set();
+  let commentsGeneration=0,commentsState='idle',commentsError='',commentTrigger=null;
+  function closeComments(){
+    if(activeCommentProjectId)commentDrafts.set(activeCommentProjectId,commentText.value);
+    commentsGeneration++;commentUnsub?.();commentUnsub=null;activeCommentProjectId=null;activeComments=[];
+    commentsModal.classList.remove('open');commentsModal.setAttribute('aria-hidden','true');$('#app').inert=false;
+    if(commentTrigger?.isConnected)commentTrigger.focus({preventScroll:true});commentTrigger=null;
+  }
   function commentAuthor(comment){return userRegistry.get(String(comment.authorProfileId))||normalizeUser({id:String(comment.authorProfileId),handle:String(comment.authorProfileId||'User'),displayName:String(comment.authorProfileId||'User')});}
   function renderComments(){
-    if(!commentsModal)return;const project=projectById(activeCommentProjectId)||projectRegistry.get(activeCommentProjectId);if(commentsTitle)commentsTitle.textContent=project?`Comments · ${project.title}`:'Comments';
-    commentsList.innerHTML=activeComments.length?activeComments.map(c=>{const author=commentAuthor(c),own=!!currentUser&&author.id===currentUser.id;return `<article class="comment-row" data-comment-id="${escapeHTML(c.id)}"><button class="comment-author" type="button" data-comment-profile="${escapeHTML(author.id)}">${userAvatarHTML(author,'comment-avatar')}<span><strong>${escapeHTML(author.displayName)}</strong><small>@${escapeHTML(author.handle)} · ${escapeHTML(formatTime(c.at))}</small></span></button>${own?`<button class="comment-delete" type="button" data-delete-comment="${escapeHTML(c.id)}" aria-label="Delete comment">Delete</button>`:''}<p>${escapeHTML(c.text)}</p></article>`;}).join(''):'<div class="empty-compact">No comments yet. Start the conversation.</div>';
-    const signedIn=!!currentUser;commentText.disabled=!signedIn;commentSubmit.disabled=!signedIn;commentAuthHint.innerHTML=signedIn?`Commenting as <strong>@${escapeHTML(currentUser.handle)}</strong>`:'<button class="mini-btn" id="commentSignInBtn" type="button">Sign in to comment</button>';
-    $('#commentSignInBtn')?.addEventListener('click',signInWithGoogle);$$('[data-comment-profile]',commentsList).forEach(b=>b.addEventListener('click',()=>{closeComments();openProfile(b.dataset.commentProfile);}));$$('[data-delete-comment]',commentsList).forEach(b=>b.addEventListener('click',()=>deleteComment(b.dataset.deleteComment)));
+    const project=projectById(activeCommentProjectId)||projectRegistry.get(activeCommentProjectId);
+    commentsTitle.textContent=project?'Comments · '+project.title:'Comments';
+    commentsList.setAttribute('aria-busy',String(commentsState==='loading'));
+    commentsList.innerHTML=commentsState==='loading'?'<div class="empty-compact" role="status">Loading comments…</div>':commentsState==='error'?'<div class="empty-compact" role="alert">'+escapeHTML(commentsError)+'<br><button class="mini-btn" id="retryComments" type="button">Retry comments</button></div>':activeComments.length?activeComments.map(c=>{
+      const author=commentAuthor(c),own=currentUser?.id===author.id;
+      return '<article class="comment-row" data-comment-id="'+escapeHTML(c.id)+'"><button class="comment-author" type="button" data-comment-profile="'+escapeHTML(author.id)+'">'+userAvatarHTML(author,'comment-avatar')+'<span><strong>'+escapeHTML(author.displayName)+'</strong><small>@'+escapeHTML(author.handle)+' · '+escapeHTML(formatTime(c.at))+'</small></span></button>'+(own?'<button class="comment-delete" type="button" data-delete-comment="'+escapeHTML(c.id)+'" aria-label="Delete comment">Delete</button>':'')+'<p>'+escapeHTML(c.text)+'</p></article>';
+    }).join(''):'<div class="empty-compact">No comments yet. Start the conversation.</div>';
+    const signedIn=!!currentUser,pending=commentPending.has(activeCommentProjectId);
+    commentText.disabled=!signedIn;commentSubmit.disabled=!signedIn||pending;commentSubmit.textContent=pending?'Posting…':'Comment';
+    commentAuthHint.innerHTML=signedIn?'Commenting as <strong>@'+escapeHTML(currentUser.handle)+'</strong>':'<button class="mini-btn" id="commentSignInBtn" type="button">Sign in to comment</button>';
+    $('#commentSignInBtn')?.addEventListener('click',signInWithGoogle);$('#retryComments')?.addEventListener('click',subscribeComments);
+    $$('[data-comment-profile]',commentsList).forEach(b=>b.addEventListener('click',()=>{closeComments();openProfile(b.dataset.commentProfile);}));
+    $$('[data-delete-comment]',commentsList).forEach(b=>b.addEventListener('click',()=>deleteComment(b.dataset.deleteComment)));
+  }
+  function subscribeComments(){
+    commentUnsub?.();commentUnsub=null;const projectId=activeCommentProjectId,generation=++commentsGeneration;
+    if(!cloud){commentsState='error';commentsError='Comments are offline. Reconnect and retry.';renderComments();return;}
+    commentsState='loading';renderComments();
+    commentUnsub=cloud.subscribeProjectComments(projectId,comments=>{
+      if(generation!==commentsGeneration||projectId!==activeCommentProjectId)return;
+      commentsState='ready';activeComments=comments;renderComments();
+    },error=>{if(generation!==commentsGeneration)return;commentsState='error';commentsError=cloudErrorMessage('Comments',error)+'. Retry when the connection is ready.';renderComments();});
   }
   function openComments(projectId){
-    if(!projectId)return;commentUnsub?.();activeCommentProjectId=projectId;activeComments=[];commentsModal.classList.add('open');commentsModal.setAttribute('aria-hidden','false');renderComments();
-    if(!cloud){commentsList.innerHTML='<div class="empty-compact">Comments are unavailable while Firebase is offline.</div>';return;}
-    commentUnsub=cloud.subscribeProjectComments(projectId,comments=>{activeComments=comments;renderComments();},err=>reportCloudError('Comments sync',err,{toastUser:true}));
+    if(!projectId)return;if(activeCommentProjectId)commentDrafts.set(activeCommentProjectId,commentText.value);else commentTrigger=document.activeElement;
+    stopActiveProject();activeCommentProjectId=projectId;activeComments=[];commentText.value=commentDrafts.get(projectId)||'';
+    commentsModal.classList.add('open');commentsModal.setAttribute('aria-hidden','false');$('#app').inert=true;subscribeComments();$('#closeComments').focus({preventScroll:true});
   }
   async function submitComment(){
-    if(!currentUser)return signInWithGoogle();if(!can('comment'))return showToast('Commenting is unavailable for this account');if(!cloud||!activeCommentProjectId)return showToast('Comments service is offline');const text=commentText.value.trim();if(!text)return showToast('Write a comment first');
-    commentSubmit.disabled=true;try{await cloud.createComment(activeCommentProjectId,currentUser.id,text);commentText.value='';showToast('Comment posted');}catch(err){reportCloudError('Comment publish',err,{toastUser:true});}finally{commentSubmit.disabled=false;}
+    const projectId=activeCommentProjectId,authorId=currentUser?.id,text=commentText.value.trim();
+    if(!authorId)return signInWithGoogle();if(!can('comment'))return showToast('Commenting is unavailable for this account');
+    if(!cloud||!projectId)return showToast('Comments service is offline');if(!text)return showToast('Write a comment first');if(commentPending.has(projectId))return;
+    commentPending.add(projectId);renderComments();
+    try{await cloud.createComment(projectId,authorId,text);if(commentDrafts.get(projectId)?.trim()===text)commentDrafts.delete(projectId);if(activeCommentProjectId===projectId&&commentText.value.trim()===text)commentText.value='';showToast('Comment posted');}
+    catch(error){reportCloudError('Comment publish',error,{toastUser:true});}
+    finally{commentPending.delete(projectId);if(activeCommentProjectId)renderComments();}
   }
-  async function deleteComment(commentId){if(!currentUser||!cloud||!activeCommentProjectId)return;if(!confirm('Delete this comment?'))return;try{await cloud.deleteComment(activeCommentProjectId,commentId);}catch(err){reportCloudError('Comment delete',err,{toastUser:true});}}
-  $('#closeComments')?.addEventListener('click',closeComments);commentsModal?.addEventListener('click',e=>{if(e.target===commentsModal)closeComments();});commentSubmit?.addEventListener('click',submitComment);commentText?.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')submitComment();});
+  async function deleteComment(commentId){
+    const projectId=activeCommentProjectId,authorId=currentUser?.id;if(!authorId||!cloud||!projectId)return;
+    if(!await confirmAction('Delete this comment?')||currentUser?.id!==authorId)return;
+    try{await cloud.deleteComment(projectId,commentId);}catch(error){reportCloudError('Comment delete',error,{toastUser:true});}
+  }
+  $('#closeComments').addEventListener('click',closeComments);commentsModal.addEventListener('click',e=>{if(e.target===commentsModal)closeComments();});
+  commentsModal.addEventListener('keydown',e=>{
+    if(e.key!=='Tab')return;
+    const controls=$$('button:not(:disabled),textarea:not(:disabled),a[href]',commentsModal).filter(el=>el.getClientRects().length),first=controls[0],last=controls.at(-1);
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
+  });
+  commentSubmit.addEventListener('click',submitComment);commentText.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();submitComment();}});
 
   // ---------- profile / authenticated social session ----------
   let activeProfileTab='projects',profileSortNewest=true,postComposerOpen=false;
@@ -1326,7 +1398,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   function openProfile(profileId=null){viewedProfileId=profileId||currentUser?.id||null;go('profile');renderProfile();subscribeViewedProfile();}
   function renderProfileAvatar(user){profileAvatar.innerHTML=user?.avatarUrl?`<img src="${escapeHTML(user.avatarUrl)}" alt="${escapeHTML(user.displayName)}" referrerpolicy="no-referrer">`:ICONS.user;}
   function refreshFollowButtons(){
-    $$('[data-follow-user]').forEach(btn=>{const target=btn.dataset.followUser,own=!!currentUser&&target===currentUser.id,on=followingIds.has(target);btn.disabled=own;btn.classList.toggle('following',!own&&on);btn.textContent=own?'You':on?'Following':'Follow';});
+    $$('[data-follow-user]').forEach(btn=>{const target=btn.dataset.followUser,own=!!currentUser&&target===currentUser.id,on=followingIds.has(target);btn.disabled=own||btn.classList.contains('social-pending');btn.classList.toggle('following',!own&&on);btn.textContent=own?'You':on?'Following':'Follow';});
     const profileFollow=$('[data-profile-follow]');if(profileFollow){const target=profileFollow.dataset.profileFollow,on=followingIds.has(target);profileFollow.classList.toggle('following',on);profileFollow.textContent=on?'Following':'Follow';}
   }
   function renderProfile(){
@@ -1340,7 +1412,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     else if(currentUser)profileActions.innerHTML=`<button class="mini-btn" data-profile-follow="${escapeHTML(user.id)}">${followingIds.has(user.id)?'Following':'Follow'}</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>`;
     else profileActions.innerHTML='<button class="google-btn" id="profileSignInBtn"><span class="g-mark">G</span><span>Sign in</span></button>';
     $('#editProfileBtn')?.addEventListener('click',openProfileEditor);$('#signOutBtn')?.addEventListener('click',signOut);$('#profileSignInBtn')?.addEventListener('click',signInWithGoogle);
-    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{b.classList.remove('social-pending');}});
+    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;if(b.disabled)return;b.disabled=true;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{b.classList.remove('social-pending');b.disabled=false;}});
     const savedTab=$('[data-profile-tab="saved"]');if(savedTab)savedTab.hidden=!isOwn;
     updateProfileTabs();renderProfileTab(activeProfileTab==='saved'&&!isOwn?'projects':activeProfileTab);
   }
@@ -1364,7 +1436,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     else if(tab==='following')profilePanel.innerHTML=`<div class="panel-head"><h2>Following</h2><span class="result-meta">${profileFollowing.length} total</span></div>${peopleRows(profileFollowing)}`;
     else if(tab==='saved'){
       if(!isOwn){renderProfileTab('projects');return;}
-      const saved=profileSavedIds.map(projectById).filter(Boolean);profilePanel.innerHTML=`<div class="panel-head"><h2>Saved projects</h2><span class="result-meta">${saved.length} total</span></div>${saved.length?saved.map(p=>`<div class="saved-project-row"><div><strong>${escapeHTML(p.title)}</strong><div class="result-meta">${p.isDefault?'Default Project':`@${escapeHTML(p.creator)}`} · ${escapeHTML(p.category)}</div></div><button data-open-saved="${escapeHTML(p.id)}">Open</button></div>`).join(''):'<div class="empty-compact">Save a project from the feed and it will appear here.</div>'}`;$$('[data-open-saved]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProjectById(b.dataset.openSaved)));
+      const saved=profileSavedIds.map(projectById).filter(Boolean);profilePanel.innerHTML=`<div class="panel-head"><h2>Saved projects</h2><span class="result-meta">${saved.length} total</span></div>${saved.length?saved.map(p=>`<div class="saved-project-row"><div><strong>${escapeHTML(p.title)}</strong><div class="result-meta">${p.isDefault?'Project Embedded':`@${escapeHTML(p.creator)}`} · ${escapeHTML(p.category)}</div></div><button data-open-saved="${escapeHTML(p.id)}">Open</button></div>`).join(''):'<div class="empty-compact">Save a project from the feed and it will appear here.</div>'}`;$$('[data-open-saved]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProjectById(b.dataset.openSaved)));
     }
     $$('[data-person-profile]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.personProfile)));
   }
@@ -1402,24 +1474,24 @@ async function createFirebaseService(firebaseConfig, options={}){
     }
   }
   async function signOut(){
-    try{viewedProfileId=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
+    try{viewedProfileId=null;await presenceUnsub?.();presenceUnsub=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
     catch(err){reportCloudError('Sign out',err,{toastUser:true});}
   }
   async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){reportCloudError('Post publish',err,{toastUser:true});}}
-  async function deletePost(id){if(!currentUser||!cloud)return;if(!confirm('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){reportCloudError('Post delete',err,{toastUser:true});}}
-  async function deleteOwnedProject(id){const p=projectRegistry.get(id);if(!p||p.ownerUserId!==currentUser?.id||p.sourceType==='builtin')return;if(!confirm(`Delete "${p.title}"?`))return;try{if(p.remote&&cloud)await cloud.deleteProject(p);else removeLocalProject(id,{skipConfirm:true});removeProjectFromUI(id);showToast('Project deleted');}catch(err){showToast(err?.message||'Could not delete project');}}
+  async function deletePost(id){if(!currentUser||!cloud)return;if(!await confirmAction('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){reportCloudError('Post delete',err,{toastUser:true});}}
+  async function deleteOwnedProject(id){const p=projectRegistry.get(id);if(!p||p.ownerUserId!==currentUser?.id||p.sourceType==='builtin')return;if(!await confirmAction(`Delete "${p.title}"?`))return;try{if(p.remote&&cloud)await cloud.deleteProject(p);else await removeLocalProject(id,{skipConfirm:true});removeProjectFromUI(id);showToast('Project deleted');}catch(err){showToast(err?.message||'Could not delete project');}}
   function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);const ix=items.findIndex(i=>(i.projectId||i.localId)===id);if(ix>=0)items.splice(ix,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
 
   function imagePicker(prefix){
     const zone=$(`#${prefix}Drop`),input=$(`#${prefix}File`),preview=$(`#${prefix}Preview`),status=$(`#${prefix}Status`),remove=$(`#${prefix}Remove`);
-    let data='',sequence=0;
+    let data='',sequence=0,pending=false;
     function display(url){preview.hidden=!url;if(url)preview.src=url;else preview.removeAttribute('src');remove.hidden=!url;}
-    function reset(url=''){sequence++;data='';input.value='';display(url);status.textContent='PNG, JPEG, WebP or GIF · Up to 5 MB';}
+    function reset(url=''){sequence++;pending=false;data='';input.value='';display(url);status.textContent='PNG, JPEG, WebP or GIF · Up to 5 MB';}
     async function load(files){
       const version=++sequence,file=files?.[0];if(!file)return;
       if(files.length!==1){status.textContent='Choose one image at a time.';return;}
       if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||!file.size||file.size>5*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF image up to 5 MB.';input.value='';return;}
-      status.textContent='Preparing image…';
+      pending=true;status.textContent='Preparing image…';
       try{
         const bitmap=await createImageBitmap(file);
         const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
@@ -1431,7 +1503,7 @@ async function createFirebaseService(firebaseConfig, options={}){
         if(version!==sequence)return;
         data=prepared;display(data);status.textContent=`${file.name} · Ready to save`;
       }catch(_){if(version===sequence)status.textContent='Could not read that image. Choose another file.';}
-      finally{input.value='';}
+      finally{if(version===sequence){pending=false;input.value='';}}
     }
     zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
     // This is a native button: Enter/Space activate its click handler.
@@ -1439,12 +1511,12 @@ async function createFirebaseService(firebaseConfig, options={}){
     for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
     zone.addEventListener('drop',e=>load(e.dataTransfer?.files));
     remove.addEventListener('click',()=>reset());
-    reset();return {reset,data:()=>data};
+    reset();return {reset,data:()=>data,pending:()=>pending};
   }
   const avatarPicker=imagePicker('avatar'),thumbnailPicker=imagePicker('thumbnail');
   function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;avatarPicker.reset(user.avatarUrl);const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
   function closeProfileEditor(){const m=$('#profileEditModal');m.classList.remove('open');m.setAttribute('aria-hidden','true');}
-  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});refreshCreatorIdentities();closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
+  async function saveProfileEditor(){if(!currentUser||!cloud||$('#saveProfileEdit').disabled)return;if(avatarPicker.pending())return showToast('Your photo is still preparing. Try Save again in a moment.');const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});refreshCreatorIdentities();closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
   $('#closeProfileEdit').addEventListener('click',closeProfileEditor);$('#profileEditModal').addEventListener('click',e=>{if(e.target.id==='profileEditModal')closeProfileEditor();});$('#saveProfileEdit').addEventListener('click',saveProfileEditor);
   $('#profileTabs').addEventListener('click',e=>{const b=e.target.closest('[data-profile-tab]');if(b&&!b.hidden)renderProfileTab(b.dataset.profileTab);});
 
@@ -1460,20 +1532,21 @@ async function createFirebaseService(firebaseConfig, options={}){
     indicator.textContent='Connecting…';
     try{
       cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});
-      const health=await cloud.checkBackendAccess();
-      indicator.classList.remove('online','error');
-      if(health.firestore&&health.realtime){indicator.textContent='Firebase connected';indicator.classList.add('online');}
-      else{indicator.textContent='Firebase rules need deployment';indicator.classList.add('error');console.warn('RapidFire backend access check failed',health.errors);showToast('Firebase connected, but database rules are blocking app data');}
+      indicator.textContent='Firebase connected';indicator.classList.remove('error');indicator.classList.add('online');
       cloud.subscribeProfiles(users=>{users.forEach(registerUser);refreshCreatorIdentities();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
-      cloud.subscribeProjects(projects=>{for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(existing.thumbnailUrl!==p.thumbnailUrl)mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      cloud.subscribeProjects(projects=>{for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?(builtInProjects.some(b=>b.id===raw.id&&b.ownerUserId===raw.ownerUserId&&b.contentUrl===raw.contentUrl)?'builtin':'remote'):'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(['contentUrl','embedUrl','sourceType','thumbnailUrl','title','desc','ownerUserId'].some(key=>existing[key]!==p[key]))mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      let authGeneration=0;
       cloud.onAuth(async fb=>{
+        const generation=++authGeneration;
         firebaseUser=fb;presenceUnsub?.();presenceUnsub=null;
         if(!fb){setCurrentUser(null);return;}
         const profileId=profileIdForFirebaseUser(fb),isMaxP=profileId==='user-maxp',baseHandle=isMaxP?'MaxP':cleanHandle((fb.displayName||fb.email?.split('@')[0]||'User')+`-${fb.uid.slice(0,5)}`);
         const seed={...(isMaxP?MAXP_USER:{}),id:profileId,authUid:fb.uid,handle:isMaxP?'MaxP':baseHandle,displayName:isMaxP?'MaxP':(fb.displayName||baseHandle),bio:isMaxP?'Main developer':'',avatarUrl:fb.photoURL||'',capabilities:USER_CAPABILITIES};
         let stored=null;try{stored=await cloud.getProfile(profileId);}catch(err){reportCloudError('Profile load',err);}
+        if(generation!==authGeneration)return;
         let user=registerUser(stored?{...seed,...stored,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES}:seed);
         try{const persisted=await cloud.upsertProfile(user);user=registerUser({...user,...persisted,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES});}catch(err){reportCloudError('Profile save',err,{toastUser:true});}
+        if(generation!==authGeneration)return;
         setCurrentUser(user);try{presenceUnsub=await cloud.setPresence(user.id,err=>reportCloudError('Presence',err));}catch(err){reportCloudError('Presence',err);}
         if(isMaxP){cloud.syncBuiltins(builtInProjects.map(p=>({...p,sourceType:'builtin',contentUrl:p.contentUrl}))).catch(err=>reportCloudError('Built-in project sync',err));}
       });
@@ -1509,6 +1582,8 @@ async function createFirebaseService(firebaseConfig, options={}){
   });
 
   $('#publishBtn').addEventListener('click',async()=>{
+    if($('#publishBtn').disabled)return;
+    if(thumbnailPicker.pending())return showToast('Your thumbnail is still preparing. Try Publish again in a moment.');
     if(!currentUser)return showToast('Sign in with Google before publishing');
     if(!cloud)return showToast('Firebase is not connected');
     if(!selectedSourceMode)return showToast('Choose an HTML file or embed URL first');

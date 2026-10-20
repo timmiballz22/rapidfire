@@ -7,3 +7,5 @@ playwright-report/
 premium-audit.json
 firebase-service-account.json
 .env*
+
+.qa/

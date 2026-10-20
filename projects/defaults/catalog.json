@@ -58,10 +58,11 @@
     ],
     "category": "Art",
     "isDefault": true,
-    "type": "embed",
-    "sourceType": "embed",
-    "embedUrl": "https://paveldogreat.github.io/WebGL-Fluid-Simulation/",
-    "thumbnailUrl": "projects/defaults/fluid.svg"
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/fluid.svg",
+    "contentUrl": "projects/defaults/fluid/index.html"
   },
   {
     "id": "default-mode",
@@ -101,10 +102,11 @@
     ],
     "category": "Game",
     "isDefault": true,
-    "type": "embed",
-    "sourceType": "embed",
-    "embedUrl": "https://0hh1.com/",
-    "thumbnailUrl": "projects/defaults/0hh1.svg"
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/0hh1.svg",
+    "contentUrl": "projects/defaults/0hh1/index.html"
   },
   {
     "id": "default-astray",
@@ -121,10 +123,11 @@
     ],
     "category": "Game",
     "isDefault": true,
-    "type": "embed",
-    "sourceType": "embed",
-    "embedUrl": "https://wwwtyro.github.io/Astray/",
-    "thumbnailUrl": "projects/defaults/astray.svg"
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/astray.svg",
+    "contentUrl": "projects/defaults/astray/index.html"
   },
   {
     "id": "default-flxteroids",
@@ -169,5 +172,47 @@
     "embedUrl": "",
     "thumbnailUrl": "projects/defaults/hextris.svg",
     "contentUrl": "projects/defaults/hextris/index.html"
+  },
+  {
+    "id": "default-tetris",
+    "title": "Tetris",
+    "originalCreator": "Jake Gordon and contributors",
+    "sourceUrl": "https://github.com/jakesgordon/javascript-tetris",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/tetris/LICENSE",
+    "desc": "Stack falling blocks and complete lines. Space to start; arrow keys to move and rotate.",
+    "tags": [
+      "puzzle",
+      "arcade",
+      "blocks"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/tetris.svg",
+    "contentUrl": "projects/defaults/tetris/index.html"
+  },
+  {
+    "id": "default-breakout",
+    "title": "Breakout",
+    "originalCreator": "Jake Gordon and contributors",
+    "sourceUrl": "https://github.com/jakesgordon/javascript-breakout",
+    "license": "MIT · sound assets CC BY-ND 2.0",
+    "licenseUrl": "projects/defaults/breakout/LICENSE",
+    "desc": "Clear the bricks with a bouncing ball. Space to start; arrow keys or touch to move the paddle.",
+    "tags": [
+      "arcade",
+      "physics",
+      "reflex"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/breakout.svg",
+    "contentUrl": "projects/defaults/breakout/index.html"
   }
 ]

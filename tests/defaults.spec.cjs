@@ -5,7 +5,7 @@ test('starter projects have credits without impersonating accounts, and stay gat
   await page.goto('/index.html');
   for(const entry of catalog){
     const article=page.locator(`[data-project-id="${entry.id}"]`);
-    await expect(article.locator('.creator-name')).toHaveText('Default Project');
+    await expect(article.locator('.creator-name')).toHaveText('Project Embedded');
     await expect(article.locator('[data-open-profile],[data-follow]')).toHaveCount(0);
     await expect(article.locator('iframe')).toHaveAttribute('src','about:blank');
   }

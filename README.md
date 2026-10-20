@@ -34,3 +34,12 @@ After editing `js/app.js` or `js/firebase-service.js`, run `node scripts/sync-in
 Storage rules are included for a future Storage-enabled project but are not needed or deployed by the Spark app. For optional Firebase Hosting, build and deploy with `npx firebase deploy --only hosting`. Keep all private credentials out of Git.
 
 For automatic rule deployment from GitHub, configure the protected `firebase-production` environment with `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` variables. The manual workflow uses short-lived Google Workload Identity Federation instead of a committed service account key. Configure its service account with only the permissions needed to publish the two databases' rules and indexes. The default test workflow requires no cloud credentials.
+
+## Social and embedded-project repair, 2026-10-20
+The legacy package rejected newer fields, large inline photo URLs, and HTML source subcollections. Deploying static code alone does not publish Firebase rules. The current implementation accepts normal owner-authenticated actions while protecting account identity, unique handles, admin paths and trusted runtimes.
+
+Comments open in a right sidebar with per-project drafts, retries and keyboard focus management. Local photo and thumbnail pickers prepare images before Save/Publish. Ten open-source projects, including three Flash games, have creator/source/license credits and the label Project Embedded. Their original editable sources and licenses are preserved.
+
+Run `python3 scripts/vendor-defaults.py` once before tests/builds if the vendored folders are missing. It reproduces pinned upstream snapshots and verifies the npm Ruffle package digest. Then run `npm install`, `node scripts/build-test-service.mjs`, and the emulator/browser commands in the Verify RapidFire workflow. The workflow runs the rules and real service tests three times and all browser tests twice, then retains the site and test evidence as artifacts. A successful branch verification also commits the reproducible assets and lockfile to the repair branch. No production Firebase records are used in these tests.
+
+Production Firebase rules still require an authenticated deployment to project rapidfire-31bae. This workflow does not claim to deploy backend rules or provide live Google-authentication verification.

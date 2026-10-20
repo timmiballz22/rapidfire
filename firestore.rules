@@ -1,6 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() { return request.auth != null && request.auth.token.get('email','') == 'timmiballz22@gmail.com' && request.auth.token.get('email_verified',false) == true; }
+    function validProfileAuthority() {
+      return isAdmin() || (request.resource.data.get('admin',false) == false && request.resource.data.get('isAdmin',false) == false && request.resource.data.get('role','user') == 'user' && request.resource.data.get('roles',[]) == []);
+    }
+    function safeProjectRuntime() {
+      return (request.resource.data.get('sourceType','') != 'builtin' || isAdmin())
+        && (request.resource.data.get('sourceType','') != 'embed' || request.resource.data.embedUrl.matches('https?://.*'));
+    }
     function ownsProfile(id) {
       return request.auth != null && (id == 'user-maxp'
         ? request.auth.token.email == 'timmiballz22@gmail.com' && request.auth.token.email_verified == true
@@ -19,11 +27,10 @@ service cloud.firestore {
     match /users/{id} {
       allow read: if true;
       allow create: if ownsProfile(id) && request.resource.data.id == id
-        && request.resource.data.authUid == request.auth.uid && reservedHandle(id);
+        && request.resource.data.authUid == request.auth.uid && reservedHandle(id) && validProfileAuthority();
       allow update: if ownsProfile(id) && request.resource.data.id == id
-        && resource.data.authUid == request.auth.uid
-        && request.resource.data.authUid == resource.data.authUid && reservedHandle(id)
-        && (resource.data.handleLower == request.resource.data.handleLower
+        && request.resource.data.authUid == request.auth.uid && reservedHandle(id) && validProfileAuthority()
+        && (resource.data.get('handleLower', request.resource.data.handleLower) == request.resource.data.handleLower
           || !existsAfter(/databases/$(database)/documents/handles/$(resource.data.handleLower)));
       allow delete: if ownsProfile(id)
         && !existsAfter(/databases/$(database)/documents/handles/$(resource.data.handleLower));
@@ -42,9 +49,9 @@ service cloud.firestore {
     }
     match /projects/{id} {
       allow read: if true;
-      allow create: if !id.matches('default-.*') && ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id;
+      allow create: if !id.matches('default-.*') && ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id && safeProjectRuntime();
       allow update: if ownsProfile(resource.data.ownerUserId)
-        && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.id == id;
+        && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.id == id && safeProjectRuntime();
       allow delete: if ownsProfile(resource.data.ownerUserId);
       match /source/{part} {
         allow read: if ownsProject(id) || (
@@ -56,6 +63,7 @@ service cloud.firestore {
         allow delete: if ownsProject(id);
       }
     }
+    match /admin/{document=**} { allow read, write: if isAdmin(); }
     match /posts/{id} {
       allow read: if true;
       allow create: if ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id;
