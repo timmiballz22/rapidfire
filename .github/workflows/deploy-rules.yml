@@ -1,6 +1,9 @@
 name: Deploy Firebase rules
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['firestore.rules', 'database.rules.json', 'firestore.indexes.json']
 permissions:
   contents: read
   id-token: write
@@ -14,6 +17,15 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: Verify Firebase deployment identity
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          DEPLOY_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$WIF_PROVIDER" ] || [ -z "$DEPLOY_ACCOUNT" ]; then
+            echo "::error::Firebase deployment identity is missing from the firebase-production environment. Configure GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT."
+            exit 1
+          fi
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}

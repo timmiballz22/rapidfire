@@ -1506,7 +1506,8 @@ async function createFirebaseService(firebaseConfig, options={}){
       finally{if(version===sequence){pending=false;input.value='';}}
     }
     zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
-    // This is a native button: Enter/Space activate its click handler.
+    // Open synchronously during keyboard activation, including while the modal scrolls.
+    zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
     for(const event of ['dragenter','dragover'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.add('dragover');});
     for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
     zone.addEventListener('drop',e=>load(e.dataTransfer?.files));
@@ -1575,6 +1576,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   $('#restartPreview').addEventListener('click',()=>{if(selectedSourceMode==='html'&&selectedHTML){runnerPreview.srcdoc='';requestAnimationFrame(()=>runnerPreview.srcdoc=selectedHTML);showToast('Preview restarted');}else if(selectedSourceMode==='embed'&&selectedEmbedUrl){runnerPreview.src='about:blank';requestAnimationFrame(()=>runnerPreview.src=selectedEmbedUrl);showToast('Embed reloaded');}});$('#fullscreenPreview').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await runnerPreview.requestFullscreen();}catch(_){showToast('Fullscreen request was blocked');}});$('#closeModal').addEventListener('click',closePublish);modal.addEventListener('click',e=>{if(e.target===modal)closePublish();});
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape') return;
+    if($('#confirmDialog').open)return;
     if(modal.classList.contains('open')){ closePublish(); return; }
     if(infoSheet.classList.contains('open')){ closeInfo(); return; }
     if($('#commentsModal')?.classList.contains('open')){ closeComments(); return; }
