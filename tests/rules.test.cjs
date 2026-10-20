@@ -107,6 +107,8 @@ test('administrative privileges, safe runtime URLs and trusted built-ins stay wi
   for(const patch of [{admin:true},{isAdmin:true},{role:'admin'},{roles:['admin']}])await assertFails(updateDoc(doc(own,'users','ordinary'),patch));
   await assertFails(setDoc(doc(own,'admin','settings'),{enabled:true}));
   await assertSucceeds(setDoc(doc(admin.firestore(),'admin','settings'),{enabled:true}));
+  await assertSucceeds(setDoc(doc(admin.firestore(),'projects','default-admin-catalog'),{id:'default-admin-catalog',ownerUserId:'user-maxp',sourceType:'builtin',published:true}));
+  await assertFails(updateDoc(doc(own,'projects','default-admin-catalog'),{title:'Hijacked'}));
   await assertFails(setDoc(doc(own,'projects','forged-builtin'),{id:'forged-builtin',ownerUserId:'ordinary',sourceType:'builtin',published:true}));
   await assertFails(setDoc(doc(own,'projects','script-frame'),{id:'script-frame',ownerUserId:'ordinary',sourceType:'embed',embedUrl:'javascript:parent.alert(1)',published:true}));
   await assertSucceeds(setDoc(doc(own,'projects','normal-upload'),{id:'normal-upload',ownerUserId:'ordinary',sourceType:'html',published:true}));

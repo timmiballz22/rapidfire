@@ -64,7 +64,12 @@ test('invalid files keep prior valid image; picker works with keyboard and remov
   await expect(page.locator('#thumbnailDrop')).toBeVisible();
   await page.locator('#thumbnailDrop').focus();await expect(page.locator('#thumbnailDrop')).toBeFocused();
   await page.evaluate(()=>{window.pickerEvents=[];for(const type of ['keydown','click','focusin'])document.addEventListener(type,event=>window.pickerEvents.push({type,key:event.key,target:event.target.id,active:document.activeElement?.id}),true);});
-  const chooserPromise=page.waitForEvent('filechooser',{timeout:8000});await page.keyboard.press('Enter');
+  const chooserPromise=page.waitForEvent('filechooser',{timeout:8000});
+  // A keyboard action can reach Chromium before Playwright's asynchronous
+  // file-chooser interception is enabled. Acknowledge it before sending Enter.
+  const pickerSession=await page.context().newCDPSession(page);
+  await pickerSession.send('Page.setInterceptFileChooserDialog',{enabled:true});
+  await page.keyboard.press('Enter');
   let chooser;try{chooser=await chooserPromise;}catch(error){console.log('Picker diagnostics',await page.evaluate(()=>({events:window.pickerEvents,active:document.activeElement?.outerHTML,zone:document.getElementById('thumbnailDrop').outerHTML})));throw error;}
   await chooser.setFiles({name:'pixel.png',mimeType:'image/png',buffer:png});
   await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
