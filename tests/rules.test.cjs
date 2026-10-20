@@ -29,6 +29,20 @@ test('forged account IDs, auth UID changes and handle claims fail',async()=>{
   await assertFails(setDoc(doc(alice,'users','user-maxp'),{id:'user-maxp',authUid:'alice',handle:'MaxP',handleLower:'maxp'}));
   assert.equal((await getDoc(doc(bob,'handles','bob'))).data().profileId,'bob');
 });
+test('display names may repeat, usernames are case-insensitive and each account has only one',async()=>{
+  const cara=await profile('cara'),dana=await profile('dana');
+  await assertSucceeds(updateDoc(doc(cara,'users','cara'),{displayName:'Same friendly name'}));
+  await assertSucceeds(updateDoc(doc(dana,'users','dana'),{displayName:'Same friendly name'}));
+  await assertFails(setDoc(doc(cara,'handles','extra-alias'),{profileId:'cara'}));
+  const rename=writeBatch(cara);rename.set(doc(cara,'handles','new-cara'),{profileId:'cara'});rename.update(doc(cara,'users','cara'),{handle:'New-Cara',handleLower:'new-cara'});
+  await assertFails(rename.commit()); // Keeping the old reservation must fail atomically.
+  assert.equal((await getDoc(doc(cara,'handles','new-cara'))).exists(),false);
+  const valid=writeBatch(cara);valid.set(doc(cara,'handles','new-cara'),{profileId:'cara'});valid.update(doc(cara,'users','cara'),{handle:'New-Cara',handleLower:'new-cara'});valid.delete(doc(cara,'handles','cara'));await assertSucceeds(valid.commit());
+  const collision=writeBatch(dana);collision.set(doc(dana,'handles','new-cara'),{profileId:'dana'});collision.update(doc(dana,'users','dana'),{handle:'NEW-CARA',handleLower:'new-cara'});collision.delete(doc(dana,'handles','dana'));await assertFails(collision.commit());
+  const invalid=writeBatch(dana);invalid.set(doc(dana,'handles','@dana'),{profileId:'dana'});invalid.update(doc(dana,'users','dana'),{handle:'@dana',handleLower:'@dana'});invalid.delete(doc(dana,'handles','dana'));await assertFails(invalid.commit());
+  await assertFails(deleteDoc(doc(cara,'users','cara')));
+  await assertFails(setDoc(doc(cara,'projects','default-flxinvaders'),{id:'default-flxinvaders',ownerUserId:'cara',published:true}));
+});
 test('own projects, source chunks, posts and more than five writes work; other owners stay protected',async()=>{
   const alice=env.authenticatedContext('alice').firestore(),bob=env.authenticatedContext('bob').firestore();
   await assertSucceeds(setDoc(doc(alice,'projects','demo'),{id:'demo',ownerUserId:'alice',published:false}));
@@ -74,6 +88,7 @@ test('authenticated REST POSTs are accepted beyond five and cannot forge authors
 test('MaxP identity requires the verified existing email',async()=>{
   const valid=env.authenticatedContext('maxp-auth',{email:'timmiballz22@gmail.com',email_verified:true}).firestore();
   const batch=writeBatch(valid);batch.set(doc(valid,'users','user-maxp'),{id:'user-maxp',authUid:'maxp-auth',handle:'MaxP',handleLower:'maxp'});batch.set(doc(valid,'handles','maxp'),{profileId:'user-maxp'});await assertSucceeds(batch.commit());
+  const alias=writeBatch(valid);alias.set(doc(valid,'users','maxp-auth'),{id:'maxp-auth',authUid:'maxp-auth',handle:'second-name',handleLower:'second-name'});alias.set(doc(valid,'handles','second-name'),{profileId:'maxp-auth'});await assertFails(alias.commit());
   const unverified=env.authenticatedContext('someone',{email:'timmiballz22@gmail.com',email_verified:false}).firestore();
   await assertFails(updateDoc(doc(unverified,'users','user-maxp'),{bio:'Forged'}));
 });

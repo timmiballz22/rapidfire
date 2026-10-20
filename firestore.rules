@@ -4,13 +4,15 @@ service cloud.firestore {
     function ownsProfile(id) {
       return request.auth != null && (id == 'user-maxp'
         ? request.auth.token.email == 'timmiballz22@gmail.com' && request.auth.token.email_verified == true
-        : id == request.auth.uid);
+        : id == request.auth.uid && !(request.auth.token.get('email', '') == 'timmiballz22@gmail.com'
+          && request.auth.token.get('email_verified', false) == true));
     }
     function ownsProject(id) {
       return ownsProfile(get(/databases/$(database)/documents/projects/$(id)).data.ownerUserId);
     }
     function reservedHandle(id) {
       return request.resource.data.handleLower == request.resource.data.handle.lower()
+        && request.resource.data.handle.matches('[A-Za-z0-9_.-]{1,28}')
         && (request.resource.data.handleLower != 'maxp' || id == 'user-maxp')
         && getAfter(/databases/$(database)/documents/handles/$(request.resource.data.handleLower)).data.profileId == id;
     }
@@ -20,8 +22,11 @@ service cloud.firestore {
         && request.resource.data.authUid == request.auth.uid && reservedHandle(id);
       allow update: if ownsProfile(id) && request.resource.data.id == id
         && resource.data.authUid == request.auth.uid
-        && request.resource.data.authUid == resource.data.authUid && reservedHandle(id);
-      allow delete: if ownsProfile(id);
+        && request.resource.data.authUid == resource.data.authUid && reservedHandle(id)
+        && (resource.data.handleLower == request.resource.data.handleLower
+          || !existsAfter(/databases/$(database)/documents/handles/$(resource.data.handleLower)));
+      allow delete: if ownsProfile(id)
+        && !existsAfter(/databases/$(database)/documents/handles/$(resource.data.handleLower));
     }
     match /handles/{handle} {
       allow read: if true;
@@ -37,7 +42,7 @@ service cloud.firestore {
     }
     match /projects/{id} {
       allow read: if true;
-      allow create: if ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id;
+      allow create: if !id.matches('default-.*') && ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id;
       allow update: if ownsProfile(resource.data.ownerUserId)
         && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.id == id;
       allow delete: if ownsProfile(resource.data.ownerUserId);

@@ -1,0 +1,173 @@
+[
+  {
+    "id": "default-flxinvaders",
+    "title": "FlxInvaders",
+    "originalCreator": "Adam Saltsman",
+    "sourceUrl": "https://github.com/AdamAtomic/Flx-Invaders",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/flxinvaders-LICENSE.txt",
+    "desc": "Defend against waves of pixel invaders. Arrow keys to move, Space to fire.",
+    "tags": [
+      "flash",
+      "arcade",
+      "space"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "flash",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/flxinvaders.svg",
+    "contentUrl": "projects/defaults/flxinvaders.html",
+    "downloadUrl": "https://www.flixel.org/flxinvaders/FlxInvaders.swf",
+    "sha256": "562ddb1c28bc3ef838fd173ea232f3c2f4e3227e9eebe16965f83a32a1e1d95b"
+  },
+  {
+    "id": "default-2048",
+    "title": "2048",
+    "originalCreator": "Gabriele Cirulli",
+    "sourceUrl": "https://github.com/gabrielecirulli/2048",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/2048-LICENSE.txt",
+    "desc": "Slide matching tiles together and work toward 2048. Use arrow keys or swipe.",
+    "tags": [
+      "puzzle",
+      "numbers",
+      "strategy"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/2048.svg",
+    "contentUrl": "projects/defaults/2048/index.html"
+  },
+  {
+    "id": "default-fluid",
+    "title": "WebGL Fluid Simulation",
+    "originalCreator": "Pavel Dobryakov",
+    "sourceUrl": "https://github.com/PavelDoGreat/WebGL-Fluid-Simulation",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/fluid-LICENSE.txt",
+    "desc": "Paint swirling fluid with your pointer. Explore color, motion, and the simulation controls.",
+    "tags": [
+      "art",
+      "simulation",
+      "interactive"
+    ],
+    "category": "Art",
+    "isDefault": true,
+    "type": "embed",
+    "sourceType": "embed",
+    "embedUrl": "https://paveldogreat.github.io/WebGL-Fluid-Simulation/",
+    "thumbnailUrl": "projects/defaults/fluid.svg"
+  },
+  {
+    "id": "default-mode",
+    "title": "Mode",
+    "originalCreator": "Adam Saltsman",
+    "sourceUrl": "https://github.com/AdamAtomic/Mode",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/mode-LICENSE.txt",
+    "desc": "Explore a destructible pixel platformer. Follow the on-screen keyboard controls.",
+    "tags": [
+      "flash",
+      "platformer",
+      "action"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "flash",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/mode.svg",
+    "contentUrl": "projects/defaults/mode.html",
+    "downloadUrl": "https://www.adamatomic.com/mode/Mode.swf",
+    "sha256": "7a6cd90db357fd98201305da208ae94bdaacb43b1622cc0f8d48a87e4b9f8d2d"
+  },
+  {
+    "id": "default-0hh1",
+    "title": "0h h1",
+    "originalCreator": "Martin Kool / Q42",
+    "sourceUrl": "https://github.com/florisluiten/0hh1",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/0hh1-LICENSE.txt",
+    "desc": "A little logic game: balance the red and blue tiles without triples. Tap tiles to change their color.",
+    "tags": [
+      "logic",
+      "puzzle",
+      "tiles"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "embed",
+    "sourceType": "embed",
+    "embedUrl": "https://0hh1.com/",
+    "thumbnailUrl": "projects/defaults/0hh1.svg"
+  },
+  {
+    "id": "default-astray",
+    "title": "Astray",
+    "originalCreator": "wwwtyro",
+    "sourceUrl": "https://github.com/wwwtyro/Astray",
+    "license": "Unlicense",
+    "licenseUrl": "projects/defaults/astray-LICENSE.txt",
+    "desc": "Guide a ball through an increasingly complex maze. Use the arrow keys.",
+    "tags": [
+      "maze",
+      "3d",
+      "physics"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "embed",
+    "sourceType": "embed",
+    "embedUrl": "https://wwwtyro.github.io/Astray/",
+    "thumbnailUrl": "projects/defaults/astray.svg"
+  },
+  {
+    "id": "default-flxteroids",
+    "title": "FlxTeroids",
+    "originalCreator": "Adam Saltsman",
+    "sourceUrl": "https://github.com/AdamAtomic/FlxTeroids",
+    "license": "MIT",
+    "licenseUrl": "projects/defaults/flxteroids-LICENSE.txt",
+    "desc": "Pilot a tiny ship through an asteroid field. Arrow keys to steer and thrust, Space to fire.",
+    "tags": [
+      "flash",
+      "arcade",
+      "asteroids"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "flash",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/flxteroids.svg",
+    "contentUrl": "projects/defaults/flxteroids.html",
+    "downloadUrl": "https://www.flixel.org/flxteroids/FlxTeroids.swf",
+    "sha256": "7fe5f2abd50c32cd1d451d4e587223438b7d3a0166be9d6153143583e20a7cf3"
+  },
+  {
+    "id": "default-hextris",
+    "title": "Hextris",
+    "originalCreator": "Logan Engstrom, Garrett Finucane, Noah Moroze, and Michael Yang",
+    "sourceUrl": "https://github.com/Hextris/hextris",
+    "license": "GPL-3.0-or-later",
+    "licenseUrl": "projects/defaults/hextris-LICENSE.txt",
+    "desc": "Rotate the hexagon to stack and match falling colors. Use Left/Right or tap the sides.",
+    "tags": [
+      "puzzle",
+      "arcade",
+      "reflex"
+    ],
+    "category": "Game",
+    "isDefault": true,
+    "type": "remote",
+    "sourceType": "html",
+    "embedUrl": "",
+    "thumbnailUrl": "projects/defaults/hextris.svg",
+    "contentUrl": "projects/defaults/hextris/index.html"
+  }
+]

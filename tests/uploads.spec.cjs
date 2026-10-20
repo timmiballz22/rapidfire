@@ -38,20 +38,25 @@ test('thumbnail drag/drop previews, publishes, persists and hides during play',a
   await page.locator('#embedUrl').fill('https://example.com');await page.locator('#loadEmbedUrl').click();
   await page.locator('#projectName').fill('Upload regression');await page.locator('#publishBtn').click();
   await expect.poll(()=>page.evaluate(()=>window.lastProject?.extras.thumbnailImage)).toMatch(/^data:image\/webp;base64,/);
-  const thumbnail=page.locator('.project-thumbnail').first();await expect(thumbnail).toBeVisible();
-  await page.locator('.project').filter({has:thumbnail}).locator('[data-play]').click();
+  const published=page.locator('.project[data-project="Upload regression"]');
+  const thumbnail=published.locator('.project-thumbnail');await expect(thumbnail).toBeVisible();
+  await published.locator('[data-play]').click();
   await expect(thumbnail).toBeHidden();
 });
 test('profile photo uses drag/drop and survives a failed save',async({page})=>{
   await prepare(page);await page.getByRole('button',{name:'Profile',exact:true}).click();
   await page.getByRole('button',{name:'Edit profile',exact:true}).click();
   await drop(page,'avatarDrop');await expect(page.locator('#avatarStatus')).toContainText('Ready to save');
+  await page.locator('#editDisplayName').fill('Alice the Maker');
+  await page.locator('#editHandle').fill('alice.unique');
   await page.evaluate(()=>{window.failSave=true;});await page.locator('#saveProfileEdit').click();
   await expect(page.locator('#profileEditModal')).toHaveClass(/open/);await expect(page.locator('#avatarPreview')).toBeVisible();
   await page.evaluate(()=>{window.failSave=false;});await page.locator('#saveProfileEdit').click();
   await expect(page.locator('#profileEditModal')).not.toHaveClass(/open/);
   expect(await page.evaluate(()=>window.lastProfile.avatarImage)).toMatch(/^data:image\/webp;base64,/);
   expect(await page.evaluate(()=>window.RapidFireTemplate.users.current().avatarUrl)).toBe(await page.evaluate(()=>window.lastProfile.avatarImage));
+  await expect(page.locator('#profileCard h1')).toHaveText('Alice the Maker');
+  await expect(page.locator('#profileCard .handle')).toHaveText('@alice.unique');
 });
 test('invalid files keep prior valid image; picker works with keyboard and remove',async({page})=>{
   await prepare(page);await page.getByRole('button',{name:'Publish',exact:true}).click();
