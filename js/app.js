@@ -710,6 +710,7 @@
       finally{input.value='';}
     }
     zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
+    zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
     for(const event of ['dragenter','dragover'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.add('dragover');});
     for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
     zone.addEventListener('drop',e=>load(e.dataTransfer?.files));

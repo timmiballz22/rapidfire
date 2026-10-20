@@ -55,6 +55,7 @@ test('profile photo uses drag/drop and survives a failed save',async({page})=>{
 });
 test('invalid files keep prior valid image; picker works with keyboard and remove',async({page})=>{
   await prepare(page);await page.getByRole('button',{name:'Publish',exact:true}).click();
+  await page.locator('#thumbnailDrop').scrollIntoViewIfNeeded();
   const chooserPromise=page.waitForEvent('filechooser');await page.locator('#thumbnailDrop').press('Enter');
   await (await chooserPromise).setFiles({name:'pixel.png',mimeType:'image/png',buffer:png});
   await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
