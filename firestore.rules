@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function ownsProfile(id) {
+      return request.auth != null && (id == 'user-maxp'
+        ? request.auth.token.email == 'timmiballz22@gmail.com' && request.auth.token.email_verified == true
+        : id == request.auth.uid);
+    }
+    function ownsProject(id) {
+      return ownsProfile(get(/databases/$(database)/documents/projects/$(id)).data.ownerUserId);
+    }
+    function reservedHandle(id) {
+      return request.resource.data.handleLower == request.resource.data.handle.lower()
+        && (request.resource.data.handleLower != 'maxp' || id == 'user-maxp')
+        && getAfter(/databases/$(database)/documents/handles/$(request.resource.data.handleLower)).data.profileId == id;
+    }
+    match /users/{id} {
+      allow read: if true;
+      allow create: if ownsProfile(id) && request.resource.data.id == id
+        && request.resource.data.authUid == request.auth.uid && reservedHandle(id);
+      allow update: if ownsProfile(id) && request.resource.data.id == id
+        && resource.data.authUid == request.auth.uid
+        && request.resource.data.authUid == resource.data.authUid && reservedHandle(id);
+      allow delete: if ownsProfile(id);
+    }
+    match /handles/{handle} {
+      allow read: if true;
+      allow create: if ownsProfile(request.resource.data.profileId)
+        && (handle != 'maxp' || request.resource.data.profileId == 'user-maxp')
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.profileId)).data.handleLower == handle;
+      allow update: if ownsProfile(resource.data.profileId)
+        && request.resource.data.profileId == resource.data.profileId
+        && getAfter(/databases/$(database)/documents/users/$(resource.data.profileId)).data.handleLower == handle;
+      allow delete: if ownsProfile(resource.data.profileId);
+    }
+    match /projects/{id} {
+      allow read: if true;
+      allow create: if ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id;
+      allow update: if ownsProfile(resource.data.ownerUserId)
+        && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.id == id;
+      allow delete: if ownsProfile(resource.data.ownerUserId);
+      match /source/{part} {
+        allow read: if true;
+        allow create: if ownsProject(id) && ownsProfile(request.resource.data.ownerUserId);
+        allow update: if ownsProject(id) && ownsProfile(resource.data.ownerUserId)
+          && request.resource.data.ownerUserId == resource.data.ownerUserId;
+        allow delete: if ownsProject(id);
+      }
+    }
+    match /posts/{id} {
+      allow read: if true;
+      allow create: if ownsProfile(request.resource.data.ownerUserId) && request.resource.data.id == id;
+      allow update: if ownsProfile(resource.data.ownerUserId)
+        && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.id == id;
+      allow delete: if ownsProfile(resource.data.ownerUserId);
+    }
+  }
+}
