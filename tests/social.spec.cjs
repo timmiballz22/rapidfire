@@ -1,0 +1,36 @@
+const {test,expect}=require('@playwright/test'),{readFileSync}=require('node:fs');
+const png=Buffer.from(readFileSync('js/app.js','utf8').match(/BRAND_LOGO_DATA_URL = '([^']+)/)[1].split(',')[1],'base64');
+test.skip(!process.env.RAPIDFIRE_EMULATOR_E2E,'Requires Firebase emulators.');
+async function launch(page){
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/firebasejs/**',r=>r.abort());
+ await page.route('**/index.html',async route=>{const response=await route.fetch(),html=await response.text(),start=html.indexOf('async function createFirebaseService'),end=html.indexOf('(() => {',start);await route.fulfill({response,body:html.slice(0,start)+"async function createFirebaseService(){return (await import('/.qa/browser-service.js')).createTestService();}\n"+html.slice(end)});});
+ await page.goto('/index.html');await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate?.users.current()?.id),{timeout:15000}).toBeTruthy();return {id:await page.evaluate(()=>window.RapidFireTemplate.users.current().id),errors};
+}
+test('real Firebase photo, upload, social, sidebar comments and persistence',async({page,browser})=>{
+ const alice=await launch(page),handle='qa-'+alice.id.slice(0,18);
+ await page.getByRole('button',{name:'Profile',exact:true}).click();await page.getByRole('button',{name:'Edit profile',exact:true}).click();
+ await page.locator('#avatarFile').setInputFiles({name:'avatar.png',mimeType:'image/png',buffer:png});await expect(page.locator('#avatarStatus')).toContainText('Ready to save');
+ await page.locator('#editDisplayName').fill('Same display name');await page.locator('#editHandle').fill(handle);await page.locator('#saveProfileEdit').click();await expect(page.locator('#profileEditModal')).not.toHaveClass(/open/);
+ await expect(page.locator('#profileCard .handle')).toHaveText('@'+handle);expect(await page.evaluate(async id=>(await window.qaService.getProfile(id)).avatarUrl,alice.id)).toMatch(new RegExp('^data:image/webp'));
+ await page.getByRole('button',{name:'Publish',exact:true}).click();
+ await page.locator('#htmlFile').setInputFiles({name:'qa-game.html',mimeType:'text/html',buffer:Buffer.from('<!doctype html><h1>Real upload</h1><button id="play">Play me</button><script>document.getElementById("play").onclick=function(){this.textContent="Played"}</script>')});
+ await page.locator('#thumbnailFile').setInputFiles({name:'cover.png',mimeType:'image/png',buffer:png});await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
+ const title='QA published '+alice.id;await page.locator('#projectName').fill(title);await page.locator('#publishBtn').click();
+ const article=page.locator('.project').filter({has:page.locator('.project-title').filter({hasText:title})});await expect(article).toBeVisible();
+ const projectId=await article.getAttribute('data-project-id');await article.locator('[data-play]').click();await expect(article.frameLocator('iframe').getByRole('heading',{name:'Real upload'})).toBeVisible();await article.frameLocator('iframe').getByRole('button',{name:'Play me'}).click();await expect(article.frameLocator('iframe').getByRole('button',{name:'Played'})).toBeVisible();await article.locator('[data-stop-play]').click();
+ await article.locator('[data-like]').click();await expect(article.locator('[data-like-count]')).toHaveText('1');await article.locator('[data-save]').click();await expect(article.locator('[data-save-count]')).toHaveText('1');await page.context().grantPermissions(['clipboard-write']);await article.locator('[data-share]').click();await expect(article.locator('[data-share-count]')).toHaveText('1');
+ const bobContext=await browser.newContext({viewport:{width:390,height:844}}),bobPage=await bobContext.newPage(),bob=await launch(bobPage);
+ await bobPage.getByRole('button',{name:'Search',exact:true}).click();await bobPage.locator('#searchInput').fill('@'+handle);await bobPage.locator('[data-user-result="'+alice.id+'"]').click();await bobPage.locator('[data-profile-follow]').click();await expect(bobPage.locator('[data-profile-follow]')).toHaveText('Following');await expect(bobPage.locator('#profileCard')).toContainText('1 followers');
+ await article.locator('[data-comment]').click();const drawer=page.locator('#commentsModal .modal');await expect.poll(async()=>{const b=await drawer.boundingBox();return Math.abs(b.x+b.width-page.viewportSize().width);}).toBeLessThan(2);expect((await drawer.boundingBox()).width).toBeLessThanOrEqual(440);
+ await expect(page.locator('#closeComments')).toBeFocused();await page.locator('#closeComments').press('Shift+Tab');await expect(page.locator('#commentSubmit')).toBeFocused();
+ const text='<img src=x onerror=alert(1)> harmless text';await page.locator('#commentText').fill(text);await page.locator('#commentSubmit').click();await expect(page.locator('.comment-row p')).toHaveText(text);await expect(page.locator('.comment-row p img')).toHaveCount(0);await expect(article.locator('[data-comment-count]')).toHaveText('1');
+ await page.locator('#commentText').fill('Unsent project draft');await page.keyboard.press('Escape');await expect(article.locator('[data-comment]')).toBeFocused();await article.locator('[data-comment]').click();await expect(page.locator('#commentText')).toHaveValue('Unsent project draft');await page.locator('#commentText').fill('');
+ await page.locator('[data-delete-comment]').click();await page.locator('#confirmDelete').click();await expect(page.locator('.comment-row')).toHaveCount(0);await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'Profile',exact:true}).click();await page.locator('[data-profile-tab="saved"]').click();await expect(page.locator('.saved-project-row')).toContainText(title);
+ await page.locator('[data-profile-tab="posts"]').click();await page.locator('#newPostBtn').click();await page.locator('#postText').fill('A real emulator-backed post');await page.locator('#postBtn').click();await expect(page.locator('.post-card')).toContainText('A real emulator-backed post');
+ await bobPage.getByRole('button',{name:'Home',exact:true}).click();const bobArticle=bobPage.locator('[data-project-id="'+projectId+'"]');await bobArticle.scrollIntoViewIfNeeded();await bobArticle.locator('[data-comment]').click();await expect.poll(async()=>(await bobPage.locator('#commentsModal .modal').boundingBox()).x).toBe(0);expect((await bobPage.locator('#commentsModal .modal').boundingBox()).width).toBe(390);
+ await bobPage.locator('#commentText').fill('Mobile comment');await bobPage.locator('#commentSubmit').click();await expect(bobPage.locator('.comment-row p')).toHaveText('Mobile comment');await bobPage.screenshot({path:'test-results/comments-mobile.png'});
+ await bobPage.reload();await expect.poll(()=>bobPage.evaluate(()=>window.RapidFireTemplate?.users.current()?.id)).toBe(bob.id);await bobPage.locator('[data-project-id="'+projectId+'"] [data-comment]').click();await expect(bobPage.locator('.comment-row p')).toHaveText('Mobile comment');
+ await page.reload();await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate?.users.current()?.id)).toBe(alice.id);await expect(page.locator('[data-project-id="'+projectId+'"] .project-thumbnail')).toHaveAttribute('src',new RegExp('^data:image/webp'));
+ expect(alice.errors).toEqual([]);expect(bob.errors).toEqual([]);await bobContext.close();
+});

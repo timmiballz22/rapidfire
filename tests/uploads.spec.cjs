@@ -61,8 +61,17 @@ test('profile photo uses drag/drop and survives a failed save',async({page})=>{
 test('invalid files keep prior valid image; picker works with keyboard and remove',async({page})=>{
   await prepare(page);await page.getByRole('button',{name:'Publish',exact:true}).click();
   await page.locator('#thumbnailDrop').scrollIntoViewIfNeeded();
-  const chooserPromise=page.waitForEvent('filechooser');await page.locator('#thumbnailDrop').press('Enter');
-  await (await chooserPromise).setFiles({name:'pixel.png',mimeType:'image/png',buffer:png});
+  await expect(page.locator('#thumbnailDrop')).toBeVisible();
+  await page.locator('#thumbnailDrop').focus();await expect(page.locator('#thumbnailDrop')).toBeFocused();
+  await page.evaluate(()=>{window.pickerEvents=[];for(const type of ['keydown','click','focusin'])document.addEventListener(type,event=>window.pickerEvents.push({type,key:event.key,target:event.target.id,active:document.activeElement?.id}),true);});
+  const chooserPromise=page.waitForEvent('filechooser',{timeout:8000});
+  // A keyboard action can reach Chromium before Playwright's asynchronous
+  // file-chooser interception is enabled. Acknowledge it before sending Enter.
+  const pickerSession=await page.context().newCDPSession(page);
+  await pickerSession.send('Page.setInterceptFileChooserDialog',{enabled:true});
+  await page.keyboard.press('Enter');
+  let chooser;try{chooser=await chooserPromise;}catch(error){console.log('Picker diagnostics',await page.evaluate(()=>({events:window.pickerEvents,active:document.activeElement?.outerHTML,zone:document.getElementById('thumbnailDrop').outerHTML})));throw error;}
+  await chooser.setFiles({name:'pixel.png',mimeType:'image/png',buffer:png});
   await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
   const src=await page.locator('#thumbnailPreview').getAttribute('src');
   await drop(page,'thumbnailDrop','text/plain',Buffer.from('not an image'));
@@ -76,4 +85,18 @@ test('upload controls fit a narrow viewport',async({page})=>{
   await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
   const box=await page.locator('#thumbnailDrop').boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/upload-mobile.png'});
+});
+
+test('invalid replacement during image preparation does not block publishing',async({page})=>{
+  await prepare(page);await page.getByRole('button',{name:'Publish',exact:true}).click();
+  await drop(page,'thumbnailDrop');await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
+  const original=await page.locator('#thumbnailPreview').getAttribute('src');
+  await page.evaluate(()=>{const decode=window.createImageBitmap.bind(window);window.createImageBitmap=(...args)=>new Promise((resolve,reject)=>{window.finishDecode=()=>decode(...args).then(resolve,reject);});});
+  await drop(page,'thumbnailDrop');await expect(page.locator('#thumbnailStatus')).toContainText('Preparing image');
+  await drop(page,'thumbnailDrop','text/plain',Buffer.from('invalid'));
+  await expect(page.locator('#thumbnailStatus')).toContainText('Choose a PNG');
+  await page.locator('#embedUrl').fill('https://example.com');await page.locator('#loadEmbedUrl').click();
+  await page.locator('#publishBtn').click();
+  await expect.poll(()=>page.evaluate(()=>window.lastProject?.extras.thumbnailImage)).toBe(original);
+  await page.evaluate(()=>window.finishDecode());
 });

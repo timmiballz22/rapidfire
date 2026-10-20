@@ -94,10 +94,9 @@ export async function createFirebaseService(firebaseConfig, options={}){
           createdAt:current?.createdAt||fsMod.serverTimestamp(),
           updatedAt:fsMod.serverTimestamp()
         };
-        // Full replacement deliberately strips legacy/unknown fields so old profile
-        // documents cannot make the current strict schema fail during Google login.
+        // Preserve legacy metadata while binding ownership to Firebase Auth.
         tx.set(handleRef,{profileId:profile.id,updatedAt:fsMod.serverTimestamp()});
-        tx.set(userRef,payload);
+        tx.set(userRef,payload,{merge:true});
       });
       const resolved=await fsMod.getDoc(userRef);
       return resolved.exists()?{id:resolved.id,...resolved.data()}:profile;
@@ -116,8 +115,10 @@ export async function createFirebaseService(firebaseConfig, options={}){
       if(desired.toLowerCase()==='maxp' && profileId!=='user-maxp') throw new Error('That handle is reserved.');
       const userRef = fsMod.doc(firestore,'users',profileId);
       const newHandleRef = fsMod.doc(firestore,'handles',desired.toLowerCase());
-      const oldLower = normalizeHandle(oldHandle).toLowerCase();
       await fsMod.runTransaction(firestore, async tx => {
+        const userSnap=await tx.get(userRef);
+        if(!userSnap.exists())throw new Error('Your profile is not ready. Sign in again and retry.');
+        const oldLower=normalizeHandle(userSnap.data().handle).toLowerCase();
         const newSnap = await tx.get(newHandleRef);
         if (newSnap.exists() && newSnap.data().profileId !== profileId) throw new Error('That handle is already taken.');
         let oldRef=null, oldSnap=null;
@@ -292,14 +293,16 @@ export async function createFirebaseService(firebaseConfig, options={}){
     async setPresence(profileId,onError=()=>{}){
       const statusRef=dbMod.ref(realtime,`presence/${key(profileId)}`);
       const connectedRef=dbMod.ref(realtime,'.info/connected');
+      const disconnect=dbMod.onDisconnect(statusRef);let disposed=false;
       const unsubscribe=dbMod.onValue(connectedRef,async snap=>{
-        if(snap.val()!==true)return;
+        if(snap.val()!==true||disposed)return;
         try{
-          await dbMod.onDisconnect(statusRef).set({online:false,lastChanged:dbMod.serverTimestamp()});
+          await disconnect.set({online:false,lastChanged:dbMod.serverTimestamp()});
+          if(disposed){await disconnect.cancel();return;}
           await dbMod.set(statusRef,{online:true,lastChanged:dbMod.serverTimestamp()});
         }catch(error){onError(error);}
       },onError);
-      return unsubscribe;
+      return async()=>{disposed=true;unsubscribe();try{await disconnect.cancel();await dbMod.set(statusRef,{online:false,lastChanged:dbMod.serverTimestamp()});}catch(error){onError(error);}};
     },
     subscribePresence(profileId,callback,onError=()=>{}){
       return dbMod.onValue(dbMod.ref(realtime,`presence/${key(profileId)}`),snap=>callback(snap.val()||{online:false}),onError);

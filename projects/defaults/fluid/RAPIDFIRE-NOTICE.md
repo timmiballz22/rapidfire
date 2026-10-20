@@ -1,0 +1,1 @@
+Integrated 2026-10-20. Added Escape-to-feed and viewport metadata where needed. Removed remote analytics. Astray texture paths are relative. Fluid uses anonymous CORS textures. 0h h1 stores scores only for this play session. Original source, assets and license notices are retained.
