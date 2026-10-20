@@ -55,7 +55,7 @@ test('profile photo uses drag/drop and survives a failed save',async({page})=>{
 });
 test('invalid files keep prior valid image; picker works with keyboard and remove',async({page})=>{
   await prepare(page);await page.getByRole('button',{name:'Publish',exact:true}).click();
-  const chooserPromise=page.waitForEvent('filechooser');await page.locator('#thumbnailDrop').focus();await page.keyboard.press('Enter');
+  const chooserPromise=page.waitForEvent('filechooser');await page.locator('#thumbnailDrop').press('Enter');
   await (await chooserPromise).setFiles({name:'pixel.png',mimeType:'image/png',buffer:png});
   await expect(page.locator('#thumbnailStatus')).toContainText('Ready to save');
   const src=await page.locator('#thumbnailPreview').getAttribute('src');
@@ -71,3 +71,4 @@ test('upload controls fit a narrow viewport',async({page})=>{
   const box=await page.locator('#thumbnailDrop').boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/upload-mobile.png'});
 });
+
