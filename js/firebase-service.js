@@ -157,6 +157,7 @@ export async function createFirebaseService(firebaseConfig, options={}){
         contentUrl:project.contentUrl||'',
         embedUrl:project.embedUrl||'',
         storagePath:project.storagePath||'',
+        sourceVersion:project.sourceVersion||'',
         thumbnailUrl:project.thumbnailUrl||'',
         createdAt: project.createdAt instanceof Date ? project.createdAt : fsMod.serverTimestamp(),
         updatedAt:fsMod.serverTimestamp(),
@@ -186,7 +187,7 @@ export async function createFirebaseService(firebaseConfig, options={}){
         parts.slice(offset,offset+10).forEach((source,i)=>batch.set(fsMod.doc(firestore,'projects',projectId,'source',`${version}-${String(offset+i).padStart(6,'0')}`),{ownerUserId,version,index:offset+i,source}));
         await batch.commit();
       }
-      return {contentUrl:`firestore:${projectId}:${version}`,storagePath:''};
+      return {contentUrl:`firestore:${projectId}:${version}`,storagePath:'',sourceVersion:version};
     },
     async getProjectHTML(contentUrl){
       const [,projectId,version]=contentUrl.split(':');

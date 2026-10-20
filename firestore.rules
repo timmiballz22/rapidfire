@@ -31,7 +31,9 @@ service cloud.firestore {
       allow update: if ownsProfile(resource.data.profileId)
         && request.resource.data.profileId == resource.data.profileId
         && getAfter(/databases/$(database)/documents/users/$(resource.data.profileId)).data.handleLower == handle;
-      allow delete: if ownsProfile(resource.data.profileId);
+      allow delete: if ownsProfile(resource.data.profileId)
+        && (!existsAfter(/databases/$(database)/documents/users/$(resource.data.profileId))
+          || getAfter(/databases/$(database)/documents/users/$(resource.data.profileId)).data.handleLower != handle);
     }
     match /projects/{id} {
       allow read: if true;
@@ -40,7 +42,9 @@ service cloud.firestore {
         && request.resource.data.ownerUserId == resource.data.ownerUserId && request.resource.data.id == id;
       allow delete: if ownsProfile(resource.data.ownerUserId);
       match /source/{part} {
-        allow read: if true;
+        allow read: if ownsProject(id) || (
+          get(/databases/$(database)/documents/projects/$(id)).data.published == true
+          && get(/databases/$(database)/documents/projects/$(id)).data.sourceVersion == resource.data.version);
         allow create: if ownsProject(id) && ownsProfile(request.resource.data.ownerUserId);
         allow update: if ownsProject(id) && ownsProfile(resource.data.ownerUserId)
           && request.resource.data.ownerUserId == resource.data.ownerUserId;

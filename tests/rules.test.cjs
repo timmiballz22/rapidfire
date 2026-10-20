@@ -33,14 +33,19 @@ test('own projects, source chunks, posts and more than five writes work; other o
   const alice=env.authenticatedContext('alice').firestore(),bob=env.authenticatedContext('bob').firestore();
   await assertSucceeds(setDoc(doc(alice,'projects','demo'),{id:'demo',ownerUserId:'alice',published:false}));
   await assertSucceeds(setDoc(doc(alice,'projects','demo','source','part'),{ownerUserId:'alice',version:'v1',index:0,source:'<h1>Hello</h1>'}));
-  await assertSucceeds(updateDoc(doc(alice,'projects','demo'),{published:true,title:'Demo',thumbnailUrl:'data:image/webp;base64,AAA='}));
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'projects','demo','source','part')));
+  await assertSucceeds(updateDoc(doc(alice,'projects','demo'),{published:true,sourceVersion:'v1',title:'Demo',thumbnailUrl:'data:image/webp;base64,AAA='}));
   for(let i=0;i<6;i++)await assertSucceeds(setDoc(doc(alice,'posts','post'+i),{id:'post'+i,ownerUserId:'alice',text:'Post '+i}));
   await assertFails(updateDoc(doc(bob,'projects','demo'),{ownerUserId:'bob'}));
   await assertFails(deleteDoc(doc(bob,'projects','demo')));
   await assertFails(setDoc(doc(bob,'projects','demo','source','attack'),{ownerUserId:'bob',source:'replacement'}));
   await assertFails(updateDoc(doc(bob,'posts','post0'),{text:'Forged'}));
   await assertFails(setDoc(doc(bob,'posts','fake'),{id:'fake',ownerUserId:'alice',text:'Forged'}));
-  await assertSucceeds(getDocs(collection(env.unauthenticatedContext().firestore(),'projects','demo','source')));
+  const {query,where}=require('firebase/firestore');
+  await assertSucceeds(getDocs(query(collection(env.unauthenticatedContext().firestore(),'projects','demo','source'),where('version','==','v1'))));
+  await assertSucceeds(setDoc(doc(alice,'projects','demo','source','draft'),{ownerUserId:'alice',version:'v2',index:0,source:'Unpublished revision'}));
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'projects','demo','source','draft')));
+  await assertFails(deleteDoc(doc(alice,'handles','alice-new')));
   await assertSucceeds(deleteDoc(doc(alice,'projects','demo','source','part')));await assertSucceeds(deleteDoc(doc(alice,'projects','demo')));
 });
 test('Realtime social writes, follow mirrors, comments and own saves work',async()=>{
