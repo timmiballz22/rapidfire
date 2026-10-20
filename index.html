@@ -309,6 +309,7 @@
   .profile-edit-grid label{display:grid;gap:5px;color:#bdbdc2;font-size:12px}.profile-edit-grid input,.profile-edit-grid textarea{border:1px solid #48484d;background:#19191c;color:#fff;border-radius:10px;padding:10px 11px;font:inherit}.profile-edit-grid textarea{min-height:90px;resize:vertical}
   .saved-project-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border:1px solid #3d3d42;background:#29292d;border-radius:13px;margin-top:8px}.saved-project-row button{border:1px solid #4b4b50;background:#37373b;color:#fff;border-radius:9px;padding:7px 10px;cursor:pointer}
   @media (max-width:760px){.creator-bar{grid-template-columns:auto minmax(0,1fr) auto;column-gap:8px}.creator-profile-hitbox{gap:7px}.creator-hint{display:none}.creator-meta{gap:5px}.profile-actions{grid-column:1/-1;grid-template-columns:1fr 1fr;min-width:0}.profile-actions .google-btn{grid-column:auto}.tabs{grid-template-columns:repeat(2,1fr)}}
+  .thumb.has-image img{width:100%;height:100%;object-fit:cover;display:block}.thumb.has-image::before,.thumb.has-image::after{display:none}.image-picker{display:grid;gap:8px}.image-drop{margin:0;width:100%;display:grid;place-items:center;gap:10px;min-height:110px;font:inherit}.image-drop img{display:block;width:100%;height:150px;object-fit:contain}.image-drop img[hidden]{display:none}.image-drop:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.project-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:2}.project[data-play-state=playing] .project-thumbnail{display:none}*{scrollbar-width:thin;scrollbar-color:#73737a #202023}.image-picker .helper{min-height:2.4em}
 </style>
 <meta content="RapidFire — discover, play, publish and follow interactive web projects." name="description"/></head>
 <body>
@@ -360,11 +361,12 @@
 <div class="publish-grid">
 <div class="field"><label for="projectName">Project name</label><input id="projectName" placeholder="My tiny game"/></div>
 <div class="field"><label for="projectCategory">Category</label><select id="projectCategory"><option>Game</option><option>Tool</option><option>Education</option><option>Art</option><option>Experiment</option><option>Other</option></select></div>
+<div class="field full"><div class="image-picker"><span>Project thumbnail</span><input type="file" id="thumbnailFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/><button class="dropzone image-drop" id="thumbnailDrop" type="button" aria-describedby="thumbnailStatus"><img id="thumbnailPreview" hidden alt="Project thumbnail preview"/><span>Drop an image or click to choose</span></button><div class="helper" id="thumbnailStatus" role="status" aria-live="polite"></div><button id="thumbnailRemove" type="button" class="mini-btn" hidden>Remove selected image</button></div></div>
 <div class="field full"><label for="projectDescription">Description</label><textarea id="projectDescription" placeholder="What can people do in this project?"></textarea></div>
 <div class="field full"><label for="projectTags">Tags</label><input id="projectTags" placeholder="arcade, rhythm, webgame"/><div class="helper">Comma separated. Tags are searchable.</div></div>
 </div>
 <button class="publish" disabled="" id="publishBtn">Publish to RapidFire</button>
-<div class="helper">Sign in to publish. HTML uploads are stored remotely when Cloud Storage is available; projects still load only after the viewer taps Play.</div>
+<div class="helper">Sign in to publish. HTML uploads and images are saved with your project. Projects load only after the viewer taps Play.</div>
 </div>
 </div>
 <div aria-hidden="true" class="info-sheet" id="infoSheet">
@@ -375,14 +377,14 @@
 <div class="info-meta" id="infoExtra"></div>
 </div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
 
 
 
 <div class="sync-indicator" id="syncIndicator">Starting RapidFire…</div>
-<div aria-hidden="true" class="modal-backdrop" id="profileEditModal"><div aria-labelledby="profileEditTitle" aria-modal="true" class="modal" role="dialog"><div class="modal-head"><h2 id="profileEditTitle">Edit profile</h2><button aria-label="Close" class="close" id="closeProfileEdit">×</button></div><div class="profile-edit-grid"><label>Display name<input id="editDisplayName" maxlength="50"/></label><label>Handle<input autocapitalize="off" id="editHandle" maxlength="28" spellcheck="false"/></label><label>Bio<textarea id="editBio" maxlength="180"></textarea></label><label>Avatar URL<input id="editAvatarUrl" inputmode="url" placeholder="https://…"/></label></div><button class="publish" id="saveProfileEdit">Save profile</button></div></div>
+<div aria-hidden="true" class="modal-backdrop" id="profileEditModal"><div aria-labelledby="profileEditTitle" aria-modal="true" class="modal" role="dialog"><div class="modal-head"><h2 id="profileEditTitle">Edit profile</h2><button aria-label="Close" class="close" id="closeProfileEdit">×</button></div><div class="profile-edit-grid"><label>Display name<input id="editDisplayName" maxlength="50"/></label><label>Handle<input autocapitalize="off" id="editHandle" maxlength="28" spellcheck="false"/></label><label>Bio<textarea id="editBio" maxlength="180"></textarea></label><div class="image-picker"><span>Profile photo</span><input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/><button class="dropzone image-drop" id="avatarDrop" type="button" aria-describedby="avatarStatus"><img id="avatarPreview" hidden alt="Profile photo preview"/><span>Drop an image or click to choose</span></button><div class="helper" id="avatarStatus" role="status" aria-live="polite"></div><button id="avatarRemove" type="button" class="mini-btn" hidden>Remove selected image</button></div><label>Avatar URL<input id="editAvatarUrl" inputmode="url" placeholder="https://…"/></label></div><button class="publish" id="saveProfileEdit">Save profile</button></div></div>
 
 <div aria-hidden="true" class="modal-backdrop comments-modal" id="commentsModal">
   <div aria-labelledby="commentsTitle" aria-modal="true" class="modal" role="dialog">
@@ -469,7 +471,8 @@ async function createFirebaseService(firebaseConfig, options={}){
       await fsMod.runTransaction(firestore,async tx=>{
         const existing=await tx.get(userRef);
         const current=existing.exists()?existing.data():null;
-        const authUid=profile.authUid||auth.currentUser?.uid||current?.authUid||'';
+        const authUid=auth.currentUser?.uid||'';
+        if(!authUid)throw new Error('Sign in to continue.');
         let handle=normalizeHandle(current?.handle||profile.handle)||`user-${String(authUid||'user').slice(0,6)}`;
         if(handle.toLowerCase()==='maxp'&&profile.id!=='user-maxp') handle=normalizeHandle(`${handle}-${String(authUid||'user').slice(0,6)}`);
         let handleRef=fsMod.doc(firestore,'handles',handle.toLowerCase());
@@ -486,7 +489,7 @@ async function createFirebaseService(firebaseConfig, options={}){
           handleLower:handle.toLowerCase(),
           displayName:String(current?.displayName||profile.displayName||handle).trim().slice(0,50),
           bio:String(current?.bio??profile.bio??'').trim().slice(0,180),
-          avatarUrl:String(current?.avatarUrl??profile.avatarUrl??'').trim().slice(0,1000),
+          avatarUrl:String(current?.avatarUrl??profile.avatarUrl??'').trim(),
           authUid,
           createdAt:current?.createdAt||fsMod.serverTimestamp(),
           updatedAt:fsMod.serverTimestamp()
@@ -507,7 +510,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       const snap = await fsMod.getDoc(fsMod.doc(firestore,'users',profileId));
       return snap.exists()?{id:snap.id,...snap.data()}:null;
     },
-    async updateProfile(profileId, oldHandle, patch){
+    async updateProfile(profileId, oldHandle, patch, avatarImage){
       const desired = normalizeHandle(patch.handle);
       if (!desired) throw new Error('Handle must contain letters or numbers.');
       if(desired.toLowerCase()==='maxp' && profileId!=='user-maxp') throw new Error('That handle is reserved.');
@@ -529,18 +532,20 @@ async function createFirebaseService(firebaseConfig, options={}){
           handleLower:desired.toLowerCase(),
           displayName:String(patch.displayName||desired).trim().slice(0,50),
           bio:String(patch.bio||'').trim().slice(0,180),
-          avatarUrl:String(patch.avatarUrl||'').trim().slice(0,1000),
+          avatarUrl:String(avatarImage||patch.avatarUrl||'').trim(),
           updatedAt:fsMod.serverTimestamp()
         },{merge:true});
       });
-      return desired;
+      return {...patch,id:profileId,handle:desired,avatarUrl:avatarImage||patch.avatarUrl||''};
     },
 
     subscribeProjects(callback, onError=()=>{}){
       const q = fsMod.query(fsMod.collection(firestore,'projects'), fsMod.where('published','==',true), fsMod.orderBy('createdAt','desc'), fsMod.limit(100));
       return fsMod.onSnapshot(q, snap => callback(snap.docs.map(d=>({id:d.id,...d.data()}))), onError);
     },
-    async upsertProject(project){
+    async upsertProject(project,extras={}){
+      if(extras.html){Object.assign(project,await api.publishHtml({ownerUserId:project.ownerUserId,projectId:project.id,html:extras.html}));}
+      if(extras.thumbnailImage)project.thumbnailUrl=extras.thumbnailImage;
       const payload = {
         id:project.id,
         ownerUserId:project.ownerUserId,
@@ -552,32 +557,54 @@ async function createFirebaseService(firebaseConfig, options={}){
         contentUrl:project.contentUrl||'',
         embedUrl:project.embedUrl||'',
         storagePath:project.storagePath||'',
+        sourceVersion:project.sourceVersion||'',
+        thumbnailUrl:project.thumbnailUrl||'',
         createdAt: project.createdAt instanceof Date ? project.createdAt : fsMod.serverTimestamp(),
         updatedAt:fsMod.serverTimestamp(),
         published:true
       };
       const projectRef=fsMod.doc(firestore,'projects',project.id);
       const existing=await fsMod.getDoc(projectRef);
-      if(existing.exists()) delete payload.createdAt;
+      if(existing.exists()&&existing.data().createdAt) delete payload.createdAt;
       await fsMod.setDoc(projectRef,payload,{merge:true});
-      return payload;
+      return {...payload,createdAt:existing.data()?.createdAt?.toMillis?.()||Date.now()};
     },
     async publishHtml({ownerUserId, projectId, html}){
-      const path=`projects/${key(ownerUserId)}/${key(projectId)}/index.html`;
-      const objectRef=storageMod.ref(storage,path);
-      await storageMod.uploadBytes(objectRef,new Blob([html],{type:'text/html;charset=utf-8'}),{
-        contentType:'text/html;charset=utf-8',
-        cacheControl:'public,max-age=300'
+      // Spark-compatible hosting: source parts stay under Firestore's document
+      // size limit. A parent owner reservation prevents cross-account uploads.
+      const projectRef=fsMod.doc(firestore,'projects',projectId),version=crypto.randomUUID();
+      await fsMod.runTransaction(firestore,async tx=>{
+        const old=await tx.get(projectRef);
+        if(old.exists()&&old.data().ownerUserId!==ownerUserId)throw new Error('This project belongs to another account.');
+        if(!old.exists())tx.set(projectRef,{id:projectId,ownerUserId,published:false});
       });
-      return {contentUrl:await storageMod.getDownloadURL(objectRef),storagePath:path};
+      // Code points avoid splitting surrogate pairs. <= 150k characters is
+      // <= 600k UTF-8 bytes, leaving room for document fields and indexes.
+      const points=Array.from(html),parts=[];
+      for(let offset=0;offset<points.length;offset+=150000)parts.push(points.slice(offset,offset+150000).join(''));
+      for(let offset=0;offset<parts.length;offset+=10){
+        const batch=fsMod.writeBatch(firestore);
+        parts.slice(offset,offset+10).forEach((source,i)=>batch.set(fsMod.doc(firestore,'projects',projectId,'source',`${version}-${String(offset+i).padStart(6,'0')}`),{ownerUserId,version,index:offset+i,source}));
+        await batch.commit();
+      }
+      return {contentUrl:`firestore:${projectId}:${version}`,storagePath:'',sourceVersion:version};
+    },
+    async getProjectHTML(contentUrl){
+      const [,projectId,version]=contentUrl.split(':');
+      const rows=await fsMod.getDocs(fsMod.query(fsMod.collection(firestore,'projects',projectId,'source'),fsMod.where('version','==',version)));
+      if(rows.empty)throw new Error('Project source is not available yet.');
+      return rows.docs.map(d=>d.data()).sort((a,b)=>a.index-b.index).map(row=>row.source).join('');
     },
     async deleteProject(project){
+      const source=await fsMod.getDocs(fsMod.collection(firestore,'projects',project.id,'source'));
+      for(let offset=0;offset<source.docs.length;offset+=400){const batch=fsMod.writeBatch(firestore);source.docs.slice(offset,offset+400).forEach(doc=>batch.delete(doc.ref));await batch.commit();}
       await fsMod.deleteDoc(fsMod.doc(firestore,'projects',project.id));
       if(project.storagePath){
         try{ await storageMod.deleteObject(storageMod.ref(storage,project.storagePath)); }catch(_){}
       }
     },
 
+    async syncBuiltins(projects){for(const project of projects)await api.upsertProject(project);},
     subscribePosts(profileId, callback, onError=()=>{}){
       const q=fsMod.query(fsMod.collection(firestore,'posts'),fsMod.where('ownerUserId','==',profileId),fsMod.orderBy('createdAt','desc'),fsMod.limit(50));
       return fsMod.onSnapshot(q,snap=>callback(snap.docs.map(d=>({id:d.id,...d.data()}))),onError);
@@ -597,7 +624,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       for(const kind of ['likes','saves','shares','comments']){
         const r=dbMod.ref(realtime,`social/projects/${p}/${kind}`);
         unsubs.push(dbMod.onValue(r,snap=>{
-          state[kind]=snap.numChildren();
+          state[kind]=snap.size;
           if(kind!=='comments'){
             const singular=kind==='likes'?'liked':kind==='saves'?'saved':'shared';
             state[singular]=u? snap.hasChild(u):false;
@@ -680,7 +707,6 @@ async function createFirebaseService(firebaseConfig, options={}){
   };
   return api;
 }
-
 (() => {
   'use strict';
 
@@ -745,7 +771,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       handle,
       displayName:String(raw.displayName||raw.name||handle).trim().slice(0,50)||handle,
       bio:String(raw.bio||'').slice(0,180),
-      avatarUrl:String(raw.avatarUrl||raw.picture||'').slice(0,1000),
+      avatarUrl:String(raw.avatarUrl||raw.picture||''),
       stats:{followers:Number(raw.stats?.followers||0),following:Number(raw.stats?.following||0)},
       capabilities:{...USER_CAPABILITIES,...(raw.capabilities||{})},
       createdAt:raw.createdAt||Date.now(),
@@ -787,7 +813,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       title:String(raw.title||'Untitled Project'),creator:owner.handle,desc:String(raw.desc||raw.description||'No description yet.'),
       tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
       views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
-      type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
+      thumbnailUrl:String(raw.thumbnailUrl||''),type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
       source:String(raw.source||''),sourceElementId:String(raw.sourceElementId||''),contentUrl:String(raw.contentUrl||''),storagePath:String(raw.storagePath||''),embedUrl:String(raw.embedUrl||''),
       createdAt:raw.createdAt?.toMillis?raw.createdAt.toMillis():Number(raw.createdAt||Date.now())
     };
@@ -827,7 +853,8 @@ async function createFirebaseService(firebaseConfig, options={}){
     color:['TOOL','Tap swatches to copy'],science:['LAB','Tune the orbit'],memory:['MEMORY','Repeat the sequence'],
     math:['SPRINT','Build a streak'],rizz:['AURA','Chase a new best'],local:['HTML','Sandboxed local runner'],builtin:['BUILT-IN','Hosted project · tap to load'],remote:['HTML','Published project · tap to load'],embed:['EMBED','External URL · tap to load']
   };
-  function renderBody(project){ return (BODY_RENDERERS[project.type] || BODY_RENDERERS.local)(project); }
+  function renderBody(project){ return (BODY_RENDERERS[project.type] || BODY_RENDERERS.local)(project)+(project.thumbnailUrl?`<img class="project-thumbnail" src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''); }
+  function renderThumbnail(project){return `<div class="thumb ${project.thumbnailUrl?'has-image':escapeHTML(project.type||'neon')}">${project.thumbnailUrl?`<img src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''}</div>`;}
   function renderHud(project){ const label=PROJECT_HUD[project.type]; return label?`<div class="game-hud"><strong>${escapeHTML(label[0])}</strong><span>${escapeHTML(label[1])}</span></div>`:''; }
   function projectArticle(project){
     const article = document.createElement('article');
@@ -876,15 +903,22 @@ async function createFirebaseService(firebaseConfig, options={}){
   function createLocalRuntime(article, project){
     const field = $('.local-runner-field', article);
     const frame = $('iframe', article);
+    let generation=0;
     return {
-      start(){
+      async start(){
+        const run=++generation;
         if(!frame) return;
+        if(project.contentUrl.startsWith('firestore:')){
+          try{const source=await cloud.getProjectHTML(project.contentUrl);if(run!==generation)return;frame.removeAttribute('src');frame.srcdoc=instrumentProjectHTML(source);field?.classList.add('is-loaded');}
+          catch(error){if(run===generation){setProjectPlaying(article,false);showToast(error?.message||'Could not load project. Try again.');}}
+          return;
+        }
         if(project.contentUrl){ frame.removeAttribute('srcdoc'); frame.src=project.contentUrl; field?.classList.add('is-loaded'); return; }
         const source = project.source || decodeEmbeddedProjectSource(project.sourceElementId);
         if(!source) return;
         frame.removeAttribute('src'); frame.srcdoc = instrumentProjectHTML(source); field?.classList.add('is-loaded');
       },
-      stop(){ if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
+      stop(){ generation++;if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
       destroy(){ this.stop(); }
     };
   }
@@ -1107,7 +1141,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   ];
   function upsertSearchItem(project){
     const idx=items.findIndex(i=>i.localId===project.id || (i.title===project.title && i.creator===project.creator));
-    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',createdAt:project.createdAt};
+    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
     idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
   }
   function removeLocalProject(projectId,{skipConfirm=false}={}){
@@ -1236,7 +1270,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     const users=[...userRegistry.values()].filter(u=>[u.handle,u.displayName,u.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
     const result=items.filter(i=>[i.title,i.creator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
     const userHTML=users.length?`<div class="section-label">People</div>${users.map(u=>`<button class="user-result-card" data-user-result="${escapeHTML(u.id)}">${userAvatarHTML(u)}<span class="user-result-copy"><strong>${escapeHTML(u.displayName)}</strong><span>@${escapeHTML(u.handle)}${u.bio?` · ${escapeHTML(u.bio)}`:''}</span></span></button>`).join('')}`:'';
-    const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}"><div class="thumb ${i.type||'neon'}"></div><div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
+    const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}">${renderThumbnail(i)}<div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
     if(!userHTML&&!projectsHTML){searchContent.innerHTML='<div class="empty">No people or projects found.<br/>Try a title, creator, category or tag.</div>';return;}
     searchContent.innerHTML=userHTML+projectsHTML;
     $$('[data-user-result]',searchContent).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.userResult)));
@@ -1306,7 +1340,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     const user=viewedUser();if(!user)return;const isOwn=!!currentUser&&user.id===currentUser.id;activeProfileTab=tab;updateProfileTabs();$$('#profileTabs [data-profile-tab]').forEach(b=>b.classList.toggle('active',b.dataset.profileTab===tab));
     if(tab==='projects'){
       let mine=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId));mine=[...new Map(mine.map(p=>[p.projectId||p.localId,p])).values()].sort((a,b)=>profileSortNewest?(b.createdAt||0)-(a.createdAt||0):(a.createdAt||0)-(b.createdAt||0));
-      profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project"><div class="thumb ${escapeHTML(p.type||'neon')}"></div><div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
+      profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project">${renderThumbnail(p)}<div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
       $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
     }else if(tab==='posts'){
       profilePanel.innerHTML=`<div class="panel-head"><h2>Posts</h2>${isOwn?`<button class="sort-btn" id="newPostBtn">${postComposerOpen?'Cancel':'New post'}</button>`:''}</div>${isOwn&&postComposerOpen?'<div class="field"><label for="postText">Post to your followers</label><textarea id="postText" maxlength="280" placeholder="Share an update…"></textarea><button class="publish" id="postBtn">Post</button></div>':''}<div class="post-list">${profilePosts.length?profilePosts.map(p=>`<div class="post-card"><div class="post-head"><small>${escapeHTML(formatTime(p.createdAt))}</small>${isOwn?`<button class="danger-btn" data-delete-post="${escapeHTML(p.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.text)}</p></div>`).join(''):'<div class="empty-compact">No posts yet.</div>'}</div>`;
@@ -1329,7 +1363,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       cloud.subscribePosts(user.id,posts=>{profilePosts=posts;updateProfileTabs();if(activeProfileTab==='posts')renderProfileTab('posts');},err=>reportCloudError('Posts sync',err)),
       cloud.subscribePresence(user.id,state=>{profilePresence=state||{online:false};renderProfile();},err=>reportCloudError('Presence sync',err))
     );
-    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');},err=>reportCloudError('Saved sync',err))); 
+    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');},err=>reportCloudError('Saved sync',err)));
   }
   function setCurrentUser(rawUser){
     const previousId=currentUser?.id||null;
@@ -1361,9 +1395,41 @@ async function createFirebaseService(firebaseConfig, options={}){
   async function deleteOwnedProject(id){const p=projectRegistry.get(id);if(!p||p.ownerUserId!==currentUser?.id||p.sourceType==='builtin')return;if(!confirm(`Delete "${p.title}"?`))return;try{if(p.remote&&cloud)await cloud.deleteProject(p);else removeLocalProject(id,{skipConfirm:true});removeProjectFromUI(id);showToast('Project deleted');}catch(err){showToast(err?.message||'Could not delete project');}}
   function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);const ix=items.findIndex(i=>(i.projectId||i.localId)===id);if(ix>=0)items.splice(ix,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
 
-  function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
+  function imagePicker(prefix){
+    const zone=$(`#${prefix}Drop`),input=$(`#${prefix}File`),preview=$(`#${prefix}Preview`),status=$(`#${prefix}Status`),remove=$(`#${prefix}Remove`);
+    let data='',sequence=0;
+    function display(url){preview.hidden=!url;if(url)preview.src=url;else preview.removeAttribute('src');remove.hidden=!url;}
+    function reset(url=''){sequence++;data='';input.value='';display(url);status.textContent='PNG, JPEG, WebP or GIF · Up to 5 MB';}
+    async function load(files){
+      const version=++sequence,file=files?.[0];if(!file)return;
+      if(files.length!==1){status.textContent='Choose one image at a time.';return;}
+      if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||!file.size||file.size>5*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF image up to 5 MB.';input.value='';return;}
+      status.textContent='Preparing image…';
+      try{
+        const bitmap=await createImageBitmap(file);
+        const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+        canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+        let prepared=canvas.toDataURL('image/webp',0.82);
+        if(prepared.length>600000){const small=document.createElement('canvas');small.width=Math.max(1,Math.round(canvas.width/2));small.height=Math.max(1,Math.round(canvas.height/2));small.getContext('2d').drawImage(canvas,0,0,small.width,small.height);prepared=small.toDataURL('image/webp',0.65);}
+        if(prepared.length>600000)throw new Error('Image could not be resized.');
+        if(version!==sequence)return;
+        data=prepared;display(data);status.textContent=`${file.name} · Ready to save`;
+      }catch(_){if(version===sequence)status.textContent='Could not read that image. Choose another file.';}
+      finally{input.value='';}
+    }
+    zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
+    zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
+    for(const event of ['dragenter','dragover'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.add('dragover');});
+    for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
+    zone.addEventListener('drop',e=>load(e.dataTransfer?.files));
+    remove.addEventListener('click',()=>reset());
+    reset();return {reset,data:()=>data};
+  }
+  const avatarPicker=imagePicker('avatar'),thumbnailPicker=imagePicker('thumbnail');
+  function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;avatarPicker.reset(user.avatarUrl);const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
   function closeProfileEditor(){const m=$('#profileEditModal');m.classList.remove('open');m.setAttribute('aria-hidden','true');}
-  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{const handle=await cloud.updateProfile(currentUser.id,currentUser.handle,patch);setCurrentUser({...currentUser,...patch,handle});closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;}}
+  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
   $('#closeProfileEdit').addEventListener('click',closeProfileEditor);$('#profileEditModal').addEventListener('click',e=>{if(e.target.id==='profileEditModal')closeProfileEditor();});$('#saveProfileEdit').addEventListener('click',saveProfileEditor);
   $('#profileTabs').addEventListener('click',e=>{const b=e.target.closest('[data-profile-tab]');if(b&&!b.hidden)renderProfileTab(b.dataset.profileTab);});
 
@@ -1384,7 +1450,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       if(health.firestore&&health.realtime){indicator.textContent='Firebase connected';indicator.classList.add('online');}
       else{indicator.textContent='Firebase rules need deployment';indicator.classList.add('error');console.warn('RapidFire backend access check failed',health.errors);showToast('Firebase connected, but database rules are blocking app data');}
       cloud.subscribeProfiles(users=>{users.forEach(registerUser);renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
-      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(existing.thumbnailUrl!==p.thumbnailUrl)mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
       cloud.onAuth(async fb=>{
         firebaseUser=fb;presenceUnsub?.();presenceUnsub=null;
         if(!fb){setCurrentUser(null);return;}
@@ -1394,7 +1460,7 @@ async function createFirebaseService(firebaseConfig, options={}){
         let user=registerUser(stored?{...seed,...stored,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES}:seed);
         try{const persisted=await cloud.upsertProfile(user);user=registerUser({...user,...persisted,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES});}catch(err){reportCloudError('Profile save',err,{toastUser:true});}
         setCurrentUser(user);try{presenceUnsub=await cloud.setPresence(user.id,err=>reportCloudError('Presence',err));}catch(err){reportCloudError('Presence',err);}
-        if(isMaxP){for(const p of builtInProjects){cloud.upsertProject({...p,sourceType:'builtin',contentUrl:p.contentUrl}).catch(err=>reportCloudError('Built-in project sync',err));}}
+        if(isMaxP){cloud.syncBuiltins(builtInProjects.map(p=>({...p,sourceType:'builtin',contentUrl:p.contentUrl}))).catch(err=>reportCloudError('Built-in project sync',err));}
       });
       rebindAllProjectSocial();
     }catch(err){console.error('Firebase bootstrap failed',err);indicator.textContent='Firebase offline';indicator.classList.add('error');showToast('Firebase connection failed — browsing still works');renderProfile();}
@@ -1405,7 +1471,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   function openPublish(){modal.classList.add('open');modal.setAttribute('aria-hidden','false');}
   function closePublish(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}
   function clearRunner(){runnerPreview.removeAttribute('srcdoc');runnerPreview.src='about:blank';runner.classList.remove('visible');}
-  function resetPublishForm(){selectedHTML='';selectedFileName='';selectedEmbedUrl='';selectedSourceMode='';htmlFile.value='';embedUrlInput.value='';clearRunner();dropzone.classList.remove('loaded');$('#dropStatus').textContent='Preview it here. Published feed cards wait for “Tap to play”.';$('#runnerName').textContent='Project preview';$('#projectName').value='';$('#projectDescription').value='';$('#projectTags').value='';$('#projectCategory').value='Game';$('#publishBtn').disabled=true;}
+  function resetPublishForm(){thumbnailPicker.reset();selectedHTML='';selectedFileName='';selectedEmbedUrl='';selectedSourceMode='';htmlFile.value='';embedUrlInput.value='';clearRunner();dropzone.classList.remove('loaded');$('#dropStatus').textContent='Preview it here. Published feed cards wait for “Tap to play”.';$('#runnerName').textContent='Project preview';$('#projectName').value='';$('#projectDescription').value='';$('#projectTags').value='';$('#projectCategory').value='Game';$('#publishBtn').disabled=true;}
   function normalizeEmbedUrl(value){
     let raw=String(value||'').trim();if(!raw)return '';
     if(!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw))raw=`https://${raw}`;
@@ -1438,10 +1504,10 @@ async function createFirebaseService(firebaseConfig, options={}){
     button.disabled=true;button.textContent='Publishing…';
     try{
       let contentUrl='',storagePath='';const sourceType=selectedSourceMode==='html'?'html':'embed';
-      if(selectedSourceMode==='html')({contentUrl,storagePath}=await cloud.publishHtml({ownerUserId:currentUser.id,projectId,html:selectedHTML}));
+
       const project=normalizeProject({id:projectId,ownerUserId:currentUser.id,creator:currentUser.handle,title,desc,tags,category:$('#projectCategory').value,type:sourceType==='html'?'remote':'embed',sourceType,contentUrl,storagePath,embedUrl:selectedSourceMode==='embed'?selectedEmbedUrl:'',remote:true,createdAt:Date.now(),views:'0',likes:'0',saves:'0',shares:'0'});
-      await cloud.upsertProject(project);upsertSearchItem(project);const target=mountProject(project,{prepend:true});addRecent(title);renderSearch();closePublish();go('home');target.scrollIntoView({block:'start'});showToast(`${title} published`);resetPublishForm();
-    }catch(err){console.error(err);const code=String(err?.code||'');if(code.includes('storage')||/402|403|billing|blaze/i.test(String(err?.message||'')))showToast('HTML publishing needs Firebase Storage on the Blaze plan');else showToast(err?.message||'Publish failed');}
+      const saved=await cloud.upsertProject(project,{html:selectedSourceMode==='html'?selectedHTML:undefined,thumbnailImage:thumbnailPicker.data()});const published=normalizeProject({...project,...saved});upsertSearchItem(published);const target=mountProject(published,{prepend:true});addRecent(title);renderSearch();closePublish();go('home');target.scrollIntoView({block:'start'});showToast(`${title} published`);resetPublishForm();
+    }catch(err){console.error(err);showToast(err?.message||'Could not publish. Please try again.');}
     finally{button.disabled=false;button.textContent='Publish to RapidFire';}
   });
 
@@ -1457,6 +1523,5 @@ async function createFirebaseService(firebaseConfig, options={}){
   renderProfile();
   bootstrapFirebase();
 })();
-
 </script></body>
 </html>

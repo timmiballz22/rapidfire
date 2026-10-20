@@ -1,0 +1,16 @@
+{
+  "name": "rapidfire",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.cjs",
+    "test:browser": "playwright test",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "latest",
+    "@playwright/test": "^1.56.0",
+    "firebase": "latest",
+    "firebase-tools": "latest"
+  }
+}

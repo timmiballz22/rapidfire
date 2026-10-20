@@ -1,5 +1,3 @@
-import { createFirebaseService } from './firebase-service.js';
-
 (() => {
   'use strict';
 
@@ -28,6 +26,7 @@ import { createFirebaseService } from './firebase-service.js';
     like:'<svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z"/></svg>',
     save:'<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
     share:'<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5M8 13l8 5"/></svg>',
+    comment:'<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.5-4.5A8.5 8.5 0 1 1 21 12Z"/></svg>',
     info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg>',
     fullscreen:'<svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>'
   };
@@ -46,7 +45,7 @@ import { createFirebaseService } from './firebase-service.js';
     measurementId:'G-ZTXBBKYGB2'
   });
   const MAXP_EMAIL='timmiballz22@gmail.com';
-  const USER_CAPABILITIES = Object.freeze({browse:true,publish:true,post:true,follow:true,like:true,save:true,share:true,manageOwnProjects:true,editProfile:true});
+  const USER_CAPABILITIES = Object.freeze({browse:true,publish:true,post:true,follow:true,like:true,save:true,share:true,comment:true,manageOwnProjects:true,editProfile:true});
   const normalizeEmail = value => String(value || '').trim().toLowerCase();
   const userIdFromHandle = handle => `user-${String(handle || 'user').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'user'}`;
   const cleanHandle = value => String(value||'').trim().replace(/^@+/,'').replace(/\s+/g,'').replace(/[^A-Za-z0-9_.-]/g,'').slice(0,28) || 'User';
@@ -63,7 +62,7 @@ import { createFirebaseService } from './firebase-service.js';
       handle,
       displayName:String(raw.displayName||raw.name||handle).trim().slice(0,50)||handle,
       bio:String(raw.bio||'').slice(0,180),
-      avatarUrl:String(raw.avatarUrl||raw.picture||'').slice(0,1000),
+      avatarUrl:String(raw.avatarUrl||raw.picture||''),
       stats:{followers:Number(raw.stats?.followers||0),following:Number(raw.stats?.following||0)},
       capabilities:{...USER_CAPABILITIES,...(raw.capabilities||{})},
       createdAt:raw.createdAt||Date.now(),
@@ -71,7 +70,16 @@ import { createFirebaseService } from './firebase-service.js';
     };
   }
   const userRegistry=new Map();
-  function registerUser(raw){const user=normalizeUser(raw);const prior=userRegistry.get(user.id);const merged=prior?normalizeUser({...prior,...user,stats:{...prior.stats,...user.stats}}):user;userRegistry.set(merged.id,merged);return merged;}
+  function registerUser(raw={}){
+    const candidateId=String(raw.id||userIdFromHandle(raw.handle||raw.username||raw.displayName||raw.name||'User'));
+    const prior=userRegistry.get(candidateId)||null;
+    const mergedRaw=prior?{
+      ...prior,...raw,id:candidateId,
+      stats:{...prior.stats,...(raw.stats||{})},
+      capabilities:{...prior.capabilities,...(raw.capabilities||{})}
+    }:{...raw,id:candidateId};
+    const user=normalizeUser(mergedRaw);userRegistry.set(user.id,user);return user;
+  }
   function findUserByHandle(handle){const key=String(handle||'').trim().toLowerCase();return [...userRegistry.values()].find(user=>user.handle.toLowerCase()===key)||null;}
   function ensureUserByHandle(handle,seed={}){return findUserByHandle(handle)||registerUser({...seed,id:seed.id||userIdFromHandle(handle),handle,displayName:seed.displayName||handle});}
   function userAvatarHTML(user,className='avatar'){
@@ -82,6 +90,7 @@ import { createFirebaseService } from './firebase-service.js';
   let currentUser=null,viewedProfileId=null,cloud=null,firebaseUser=null,presenceUnsub=null,followingUnsub=null;
   const socialUnsubByArticle=new WeakMap();
   let followingIds=new Set(),profileFollowers=[],profileFollowing=[],profilePosts=[],profileSavedIds=[],profilePresence={online:false};
+  let commentUnsub=null,activeCommentProjectId=null,activeComments=[];
   const serviceAdapters={auth:null,users:null};
   function configureServices(adapters={}){Object.assign(serviceAdapters,adapters);return {...serviceAdapters};}
 
@@ -94,8 +103,8 @@ import { createFirebaseService } from './firebase-service.js';
       id:String(raw.id||`project-${Math.random().toString(36).slice(2,9)}`),ownerUserId:owner.id,
       title:String(raw.title||'Untitled Project'),creator:owner.handle,desc:String(raw.desc||raw.description||'No description yet.'),
       tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
-      views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),
-      type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
+      views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
+      thumbnailUrl:String(raw.thumbnailUrl||''),type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
       source:String(raw.source||''),sourceElementId:String(raw.sourceElementId||''),contentUrl:String(raw.contentUrl||''),storagePath:String(raw.storagePath||''),embedUrl:String(raw.embedUrl||''),
       createdAt:raw.createdAt?.toMillis?raw.createdAt.toMillis():Number(raw.createdAt||Date.now())
     };
@@ -111,7 +120,7 @@ import { createFirebaseService } from './firebase-service.js';
     return `<header class="creator-bar">${renderBrandLogo()}<button class="creator-profile-hitbox" data-open-profile="${escapeHTML(project.ownerUserId)}" type="button" aria-label="Open ${escapeHTML(owner.handle)} profile">${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.handle)}</span><span class="creator-hint">View profile</span></span></button><button class="follow-btn" data-follow data-follow-user="${escapeHTML(project.ownerUserId)}">Follow</button><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)} · ${suffix}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
   }
   function renderRail(project){
-    return `<div class="rail"><button class="rail-btn" data-like aria-label="Like">${ICONS.like}<span class="count" data-like-count>${escapeHTML(project.likes)}</span></button><button class="rail-btn" data-save aria-label="Save">${ICONS.save}<span class="count" data-save-count>${escapeHTML(project.saves)}</span></button><button class="rail-btn" data-share aria-label="Share">${ICONS.share}<span class="count" data-share-count>${escapeHTML(project.shares||'0')}</span></button><button class="rail-btn" data-info aria-label="Project details">${ICONS.info}</button><button class="rail-btn" data-fullscreen aria-label="Fullscreen">${ICONS.fullscreen}</button></div>`;
+    return `<div class="rail"><button class="rail-btn" data-like aria-label="Like">${ICONS.like}<span class="count" data-like-count>${escapeHTML(project.likes)}</span></button><button class="rail-btn" data-comment aria-label="Comments">${ICONS.comment}<span class="count" data-comment-count>0</span></button><button class="rail-btn" data-save aria-label="Save">${ICONS.save}<span class="count" data-save-count>${escapeHTML(project.saves)}</span></button><button class="rail-btn" data-share aria-label="Share">${ICONS.share}<span class="count" data-share-count>${escapeHTML(project.shares||'0')}</span></button><button class="rail-btn" data-info aria-label="Project details">${ICONS.info}</button><button class="rail-btn" data-fullscreen aria-label="Fullscreen">${ICONS.fullscreen}</button></div>`;
   }
   function renderGate(){
     return `<button class="play-gate" data-play aria-label="Tap to play"><span class="play-gate-pill"><span class="play-gate-icon">▶</span><strong>Tap to play</strong><small>Project runs only after you tap</small></span></button><button class="leave-play" data-stop-play type="button">← Back to feed</button>`;
@@ -135,7 +144,8 @@ import { createFirebaseService } from './firebase-service.js';
     color:['TOOL','Tap swatches to copy'],science:['LAB','Tune the orbit'],memory:['MEMORY','Repeat the sequence'],
     math:['SPRINT','Build a streak'],rizz:['AURA','Chase a new best'],local:['HTML','Sandboxed local runner'],builtin:['BUILT-IN','Hosted project · tap to load'],remote:['HTML','Published project · tap to load'],embed:['EMBED','External URL · tap to load']
   };
-  function renderBody(project){ return (BODY_RENDERERS[project.type] || BODY_RENDERERS.local)(project); }
+  function renderBody(project){ return (BODY_RENDERERS[project.type] || BODY_RENDERERS.local)(project)+(project.thumbnailUrl?`<img class="project-thumbnail" src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''); }
+  function renderThumbnail(project){return `<div class="thumb ${project.thumbnailUrl?'has-image':escapeHTML(project.type||'neon')}">${project.thumbnailUrl?`<img src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''}</div>`;}
   function renderHud(project){ const label=PROJECT_HUD[project.type]; return label?`<div class="game-hud"><strong>${escapeHTML(label[0])}</strong><span>${escapeHTML(label[1])}</span></div>`:''; }
   function projectArticle(project){
     const article = document.createElement('article');
@@ -184,15 +194,22 @@ import { createFirebaseService } from './firebase-service.js';
   function createLocalRuntime(article, project){
     const field = $('.local-runner-field', article);
     const frame = $('iframe', article);
+    let generation=0;
     return {
-      start(){
+      async start(){
+        const run=++generation;
         if(!frame) return;
+        if(project.contentUrl.startsWith('firestore:')){
+          try{const source=await cloud.getProjectHTML(project.contentUrl);if(run!==generation)return;frame.removeAttribute('src');frame.srcdoc=instrumentProjectHTML(source);field?.classList.add('is-loaded');}
+          catch(error){if(run===generation){setProjectPlaying(article,false);showToast(error?.message||'Could not load project. Try again.');}}
+          return;
+        }
         if(project.contentUrl){ frame.removeAttribute('srcdoc'); frame.src=project.contentUrl; field?.classList.add('is-loaded'); return; }
         const source = project.source || decodeEmbeddedProjectSource(project.sourceElementId);
         if(!source) return;
         frame.removeAttribute('src'); frame.srcdoc = instrumentProjectHTML(source); field?.classList.add('is-loaded');
       },
-      stop(){ if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
+      stop(){ generation++;if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
       destroy(){ this.stop(); }
     };
   }
@@ -415,7 +432,7 @@ import { createFirebaseService } from './firebase-service.js';
   ];
   function upsertSearchItem(project){
     const idx=items.findIndex(i=>i.localId===project.id || (i.title===project.title && i.creator===project.creator));
-    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',createdAt:project.createdAt};
+    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
     idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
   }
   function removeLocalProject(projectId,{skipConfirm=false}={}){
@@ -425,7 +442,7 @@ import { createFirebaseService } from './firebase-service.js';
     if(article){if(activeProject===article)setProjectPlaying(article,false);feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}
     projectRegistry.delete(projectId);const index=items.findIndex(i=>i.localId===projectId);if(index>=0)items.splice(index,1);
     safeStore.set('rapidfire.local.projects.v2',safeStore.get('rapidfire.local.projects.v2',[]).filter(p=>p.id!==projectId));
-    renderSearch($('#searchInput')?.value||'');if(currentUser){updateProfileCard();renderProfileTab('projects');}showToast(`${project.title} deleted`);return true;
+    renderSearch($('#searchInput')?.value||'');if(currentUser){renderProfile();renderProfileTab('projects');}showToast(`${project.title} deleted`);return true;
   }
 
   storedProjects.forEach(p=>mountProject(p));
@@ -454,6 +471,25 @@ import { createFirebaseService } from './firebase-service.js';
   function closeInfo(){ infoSheet.classList.remove('open'); infoSheet.setAttribute('aria-hidden','true'); }
   $('#closeInfo').addEventListener('click',closeInfo); infoSheet.addEventListener('click',e=>{if(e.target===infoSheet) closeInfo();});
 
+  let lastCloudErrorKey='';
+  function cloudErrorMessage(scope,error){
+    const code=String(error?.code||'').toLowerCase(),message=String(error?.message||'');
+    if(code.includes('permission-denied')||code.includes('permission_denied')||/permission denied|insufficient permissions/i.test(message)) return `${scope} blocked by Firebase rules`;
+    if(code.includes('unauthorized-domain')) return 'This domain is not authorized for Google sign-in';
+    if(code.includes('network')||/network|offline|failed to fetch/i.test(message)) return `${scope} is offline`;
+    return `${scope} failed`;
+  }
+  function reportCloudError(scope,error,{toastUser=false}={}){
+    console.warn(`[RapidFire:${scope}]`,error);
+    const message=cloudErrorMessage(scope,error),key=`${scope}:${error?.code||error?.message||message}`;
+    const indicator=$('#syncIndicator');if(indicator){indicator.textContent=message;indicator.classList.remove('online');indicator.classList.add('error');}
+    if(toastUser&&key!==lastCloudErrorKey){lastCloudErrorKey=key;showToast(message);}
+  }
+  function queueSocialSurfaceRefresh(){
+    if(queueSocialSurfaceRefresh.pending)return;queueSocialSurfaceRefresh.pending=true;
+    requestAnimationFrame(()=>{queueSocialSurfaceRefresh.pending=false;if(screens.search?.classList.contains('active'))renderSearch($('#searchInput')?.value||'');if(screens.profile?.classList.contains('active')&&['projects','saved'].includes(activeProfileTab))renderProfileTab(activeProfileTab);});
+  }
+
   let fullscreenProject = null;
   let intentionalFullscreenExit = false;
   document.addEventListener('fullscreenchange',()=>{
@@ -475,15 +511,20 @@ import { createFirebaseService } from './firebase-service.js';
     const stop=e.target.closest('[data-stop-play]'); if(stop){ setProjectPlaying(stop.closest('.project'),false); return; }
     const follow=e.target.closest('[data-follow]'); if(follow){
       const target=follow.dataset.followUser;if(!currentUser){showToast('Sign in to follow creators');return;}if(target===currentUser.id){showToast('This is your profile');return;}if(!cloud){showToast('Social service is offline');return;}
-      follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){showToast(err?.message||'Could not update follow');}finally{follow.classList.remove('social-pending');}return;
+      follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{follow.classList.remove('social-pending');}return;
     }
     const like=e.target.closest('[data-like]'); if(like){await runProjectSocialAction(like,'likes');return;}
     const save=e.target.closest('[data-save]'); if(save){await runProjectSocialAction(save,'saves');return;}
     const info=e.target.closest('[data-info]'); if(info){ openInfo(info.closest('.project')); return; }
+    const comment=e.target.closest('[data-comment]'); if(comment){ openComments(comment.closest('.project')?.dataset.projectId||''); return; }
     const share=e.target.closest('[data-share]'); if(share){
       const article=share.closest('.project'),title=article?.dataset.project||'RapidFire project',projectId=article?.dataset.projectId||'';
       const url=new URL(location.href);url.searchParams.set('project',projectId);
-      try{if(navigator.share)await navigator.share({title,text:`Check out ${title} on RapidFire`,url:url.href});else if(navigator.clipboard){await navigator.clipboard.writeText(url.href);showToast('Project link copied');}else showToast('Share ready');if(currentUser&&cloud)await cloud.markShared(projectId,currentUser.id);}catch(_){}return;
+      let shared=false;
+      try{if(navigator.share)await navigator.share({title,text:`Check out ${title} on RapidFire`,url:url.href});else if(navigator.clipboard){await navigator.clipboard.writeText(url.href);showToast('Project link copied');}else showToast('Share ready');shared=true;}
+      catch(err){if(String(err?.name||'')!=='AbortError')showToast('Could not share this project');return;}
+      if(shared&&currentUser&&cloud){try{await cloud.markShared(projectId,currentUser.id);}catch(err){reportCloudError('Share count',err,{toastUser:true});}}
+      return;
     }
     const fullscreen=e.target.closest('[data-fullscreen]'); if(fullscreen){ const field=fullscreen.closest('.playfield'), project=fullscreen.closest('.project'); try{ if(document.fullscreenElement){ intentionalFullscreenExit=true; await document.exitFullscreen(); } else if(field?.requestFullscreen){ fullscreenProject=project; await field.requestFullscreen(); } else showToast('Fullscreen is not available here'); }catch(_){fullscreenProject=null;intentionalFullscreenExit=false;showToast('Fullscreen request was blocked');} }
   });
@@ -494,16 +535,19 @@ import { createFirebaseService } from './firebase-service.js';
     const unsub=cloud.subscribeProjectSocial(project.id,currentUser?.id||'',state=>{
       const like=$('[data-like]',article),save=$('[data-save]',article);
       like?.classList.toggle('liked',!!state.liked);save?.classList.toggle('saved',!!state.saved);
-      const lc=$('[data-like-count]',article),sc=$('[data-save-count]',article),sh=$('[data-share-count]',article);
-      if(lc)lc.textContent=formatCount(state.likes);if(sc)sc.textContent=formatCount(state.saves);if(sh)sh.textContent=formatCount(state.shares);
-    },()=>{});
+      const lc=$('[data-like-count]',article),sc=$('[data-save-count]',article),sh=$('[data-share-count]',article),cc=$('[data-comment-count]',article);
+      if(lc)lc.textContent=formatCount(state.likes);if(sc)sc.textContent=formatCount(state.saves);if(sh)sh.textContent=formatCount(state.shares);if(cc)cc.textContent=formatCount(state.comments);
+      project.likes=String(state.likes);project.saves=String(state.saves);project.shares=String(state.shares);project.comments=String(state.comments);
+      const item=items.find(i=>(i.projectId||i.localId)===project.id);if(item){item.likes=project.likes;item.saves=project.saves;item.shares=project.shares;item.comments=project.comments;}
+      queueSocialSurfaceRefresh();
+    },err=>reportCloudError('Social sync',err));
     socialUnsubByArticle.set(article,unsub);
   }
   function rebindAllProjectSocial(){for(const article of projectElements()){const p=projectRegistry.get(article.dataset.projectId);if(p)bindProjectSocial(article,p);}}
   async function runProjectSocialAction(button,kind){
     if(!currentUser){showToast(`Sign in to ${kind==='likes'?'like':'save'} projects`);return;}if(!cloud){showToast('Social service is offline');return;}
     const article=button.closest('.project'),projectId=article?.dataset.projectId;if(!projectId)return;
-    button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){showToast(err?.message||'Social update failed');}finally{button.classList.remove('social-pending');}
+    button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');}
   }
 
   // ---------- search ----------
@@ -517,7 +561,7 @@ import { createFirebaseService } from './firebase-service.js';
     const users=[...userRegistry.values()].filter(u=>[u.handle,u.displayName,u.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
     const result=items.filter(i=>[i.title,i.creator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
     const userHTML=users.length?`<div class="section-label">People</div>${users.map(u=>`<button class="user-result-card" data-user-result="${escapeHTML(u.id)}">${userAvatarHTML(u)}<span class="user-result-copy"><strong>${escapeHTML(u.displayName)}</strong><span>@${escapeHTML(u.handle)}${u.bio?` · ${escapeHTML(u.bio)}`:''}</span></span></button>`).join('')}`:'';
-    const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}"><div class="thumb ${i.type||'neon'}"></div><div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
+    const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}">${renderThumbnail(i)}<div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
     if(!userHTML&&!projectsHTML){searchContent.innerHTML='<div class="empty">No people or projects found.<br/>Try a title, creator, category or tag.</div>';return;}
     searchContent.innerHTML=userHTML+projectsHTML;
     $$('[data-user-result]',searchContent).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.userResult)));
@@ -525,6 +569,28 @@ import { createFirebaseService } from './firebase-service.js';
   }
   function openProjectFromSearch(title){const target=$(`.project[data-project="${CSS.escape(title)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast(`${title} is listed, but its playable preview is not loaded yet`);}
   $('#searchInput').addEventListener('input',e=>renderSearch(e.target.value)); $('#searchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addRecent(e.currentTarget.value);renderSearch(e.currentTarget.value);}}); renderSearch();
+
+  // ---------- project comments ----------
+  const commentsModal=$('#commentsModal'),commentsList=$('#commentsList'),commentText=$('#commentText'),commentSubmit=$('#commentSubmit'),commentAuthHint=$('#commentAuthHint'),commentsTitle=$('#commentsTitle');
+  function closeComments(){commentUnsub?.();commentUnsub=null;activeCommentProjectId=null;activeComments=[];commentsModal?.classList.remove('open');commentsModal?.setAttribute('aria-hidden','true');}
+  function commentAuthor(comment){return userRegistry.get(String(comment.authorProfileId))||normalizeUser({id:String(comment.authorProfileId),handle:String(comment.authorProfileId||'User'),displayName:String(comment.authorProfileId||'User')});}
+  function renderComments(){
+    if(!commentsModal)return;const project=projectById(activeCommentProjectId)||projectRegistry.get(activeCommentProjectId);if(commentsTitle)commentsTitle.textContent=project?`Comments · ${project.title}`:'Comments';
+    commentsList.innerHTML=activeComments.length?activeComments.map(c=>{const author=commentAuthor(c),own=!!currentUser&&author.id===currentUser.id;return `<article class="comment-row" data-comment-id="${escapeHTML(c.id)}"><button class="comment-author" type="button" data-comment-profile="${escapeHTML(author.id)}">${userAvatarHTML(author,'comment-avatar')}<span><strong>${escapeHTML(author.displayName)}</strong><small>@${escapeHTML(author.handle)} · ${escapeHTML(formatTime(c.at))}</small></span></button>${own?`<button class="comment-delete" type="button" data-delete-comment="${escapeHTML(c.id)}" aria-label="Delete comment">Delete</button>`:''}<p>${escapeHTML(c.text)}</p></article>`;}).join(''):'<div class="empty-compact">No comments yet. Start the conversation.</div>';
+    const signedIn=!!currentUser;commentText.disabled=!signedIn;commentSubmit.disabled=!signedIn;commentAuthHint.innerHTML=signedIn?`Commenting as <strong>@${escapeHTML(currentUser.handle)}</strong>`:'<button class="mini-btn" id="commentSignInBtn" type="button">Sign in to comment</button>';
+    $('#commentSignInBtn')?.addEventListener('click',signInWithGoogle);$$('[data-comment-profile]',commentsList).forEach(b=>b.addEventListener('click',()=>{closeComments();openProfile(b.dataset.commentProfile);}));$$('[data-delete-comment]',commentsList).forEach(b=>b.addEventListener('click',()=>deleteComment(b.dataset.deleteComment)));
+  }
+  function openComments(projectId){
+    if(!projectId)return;commentUnsub?.();activeCommentProjectId=projectId;activeComments=[];commentsModal.classList.add('open');commentsModal.setAttribute('aria-hidden','false');renderComments();
+    if(!cloud){commentsList.innerHTML='<div class="empty-compact">Comments are unavailable while Firebase is offline.</div>';return;}
+    commentUnsub=cloud.subscribeProjectComments(projectId,comments=>{activeComments=comments;renderComments();},err=>reportCloudError('Comments sync',err,{toastUser:true}));
+  }
+  async function submitComment(){
+    if(!currentUser)return signInWithGoogle();if(!can('comment'))return showToast('Commenting is unavailable for this account');if(!cloud||!activeCommentProjectId)return showToast('Comments service is offline');const text=commentText.value.trim();if(!text)return showToast('Write a comment first');
+    commentSubmit.disabled=true;try{await cloud.createComment(activeCommentProjectId,currentUser.id,text);commentText.value='';showToast('Comment posted');}catch(err){reportCloudError('Comment publish',err,{toastUser:true});}finally{commentSubmit.disabled=false;}
+  }
+  async function deleteComment(commentId){if(!currentUser||!cloud||!activeCommentProjectId)return;if(!confirm('Delete this comment?'))return;try{await cloud.deleteComment(activeCommentProjectId,commentId);}catch(err){reportCloudError('Comment delete',err,{toastUser:true});}}
+  $('#closeComments')?.addEventListener('click',closeComments);commentsModal?.addEventListener('click',e=>{if(e.target===commentsModal)closeComments();});commentSubmit?.addEventListener('click',submitComment);commentText?.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')submitComment();});
 
   // ---------- profile / authenticated social session ----------
   let activeProfileTab='projects',profileSortNewest=true,postComposerOpen=false;
@@ -547,9 +613,10 @@ import { createFirebaseService } from './firebase-service.js';
     const followers=profileFollowers.length,following=profileFollowing.length,projectCount=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId)).length;
     profileCard.innerHTML=`<h1>${escapeHTML(user.displayName)}</h1><div class="handle">@${escapeHTML(user.handle)}</div><p>${followers} followers · ${following} following · ${projectCount} project${projectCount===1?'':'s'}</p>${user.bio?`<div class="bio">${escapeHTML(user.bio)}</div>`:''}<div class="presence ${profilePresence.online?'':'offline'}">${profilePresence.online?'● Online':'○ Offline'}</div>`;
     if(isOwn)profileActions.innerHTML='<button class="mini-btn" id="editProfileBtn">Edit profile</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>';
-    else profileActions.innerHTML=`<button class="mini-btn" data-profile-follow="${escapeHTML(user.id)}">${followingIds.has(user.id)?'Following':'Follow'}</button>${currentUser?'':'<button class="google-btn" id="profileSignInBtn"><span class="g-mark">G</span><span>Sign in</span></button>'}`;
+    else if(currentUser)profileActions.innerHTML=`<button class="mini-btn" data-profile-follow="${escapeHTML(user.id)}">${followingIds.has(user.id)?'Following':'Follow'}</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>`;
+    else profileActions.innerHTML='<button class="google-btn" id="profileSignInBtn"><span class="g-mark">G</span><span>Sign in</span></button>';
     $('#editProfileBtn')?.addEventListener('click',openProfileEditor);$('#signOutBtn')?.addEventListener('click',signOut);$('#profileSignInBtn')?.addEventListener('click',signInWithGoogle);
-    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){showToast(err?.message||'Could not update follow');}finally{b.classList.remove('social-pending');}});
+    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{b.classList.remove('social-pending');}});
     const savedTab=$('[data-profile-tab="saved"]');if(savedTab)savedTab.hidden=!isOwn;
     updateProfileTabs();renderProfileTab(activeProfileTab==='saved'&&!isOwn?'projects':activeProfileTab);
   }
@@ -564,7 +631,7 @@ import { createFirebaseService } from './firebase-service.js';
     const user=viewedUser();if(!user)return;const isOwn=!!currentUser&&user.id===currentUser.id;activeProfileTab=tab;updateProfileTabs();$$('#profileTabs [data-profile-tab]').forEach(b=>b.classList.toggle('active',b.dataset.profileTab===tab));
     if(tab==='projects'){
       let mine=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId));mine=[...new Map(mine.map(p=>[p.projectId||p.localId,p])).values()].sort((a,b)=>profileSortNewest?(b.createdAt||0)-(a.createdAt||0):(a.createdAt||0)-(b.createdAt||0));
-      profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project"><div class="thumb ${escapeHTML(p.type||'neon')}"></div><div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
+      profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project">${renderThumbnail(p)}<div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
       $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
     }else if(tab==='posts'){
       profilePanel.innerHTML=`<div class="panel-head"><h2>Posts</h2>${isOwn?`<button class="sort-btn" id="newPostBtn">${postComposerOpen?'Cancel':'New post'}</button>`:''}</div>${isOwn&&postComposerOpen?'<div class="field"><label for="postText">Post to your followers</label><textarea id="postText" maxlength="280" placeholder="Share an update…"></textarea><button class="publish" id="postBtn">Post</button></div>':''}<div class="post-list">${profilePosts.length?profilePosts.map(p=>`<div class="post-card"><div class="post-head"><small>${escapeHTML(formatTime(p.createdAt))}</small>${isOwn?`<button class="danger-btn" data-delete-post="${escapeHTML(p.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.text)}</p></div>`).join(''):'<div class="empty-compact">No posts yet.</div>'}</div>`;
@@ -581,27 +648,79 @@ import { createFirebaseService } from './firebase-service.js';
   function openProjectById(id){const target=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast('That project is not loaded in this feed yet');}
   function subscribeViewedProfile(){
     clearProfileSubscriptions();const user=viewedUser();if(!user||!cloud){renderProfile();return;}
-    profileUnsubs.push(cloud.subscribeFollowers(user.id,ids=>{profileFollowers=ids;renderProfile();}),cloud.subscribeFollowing(user.id,ids=>{profileFollowing=ids;renderProfile();}),cloud.subscribePosts(user.id,posts=>{profilePosts=posts;updateProfileTabs();if(activeProfileTab==='posts')renderProfileTab('posts');}),cloud.subscribePresence(user.id,state=>{profilePresence=state||{online:false};renderProfile();}));
-    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');}));
+    profileUnsubs.push(
+      cloud.subscribeFollowers(user.id,ids=>{profileFollowers=ids;renderProfile();},err=>reportCloudError('Followers sync',err)),
+      cloud.subscribeFollowing(user.id,ids=>{profileFollowing=ids;renderProfile();},err=>reportCloudError('Profile following sync',err)),
+      cloud.subscribePosts(user.id,posts=>{profilePosts=posts;updateProfileTabs();if(activeProfileTab==='posts')renderProfileTab('posts');},err=>reportCloudError('Posts sync',err)),
+      cloud.subscribePresence(user.id,state=>{profilePresence=state||{online:false};renderProfile();},err=>reportCloudError('Presence sync',err))
+    );
+    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');},err=>reportCloudError('Saved sync',err)));
   }
   function setCurrentUser(rawUser){
     const previousId=currentUser?.id||null;
     currentUser=rawUser?registerUser(rawUser):null;followingUnsub?.();followingUnsub=null;followingIds=new Set();
-    if(currentUser&&cloud)followingUnsub=cloud.subscribeFollowing(currentUser.id,ids=>{followingIds=new Set(ids);refreshFollowButtons();if(screens.profile.classList.contains('active'))renderProfile();});
+    if(currentUser&&cloud)followingUnsub=cloud.subscribeFollowing(currentUser.id,ids=>{followingIds=new Set(ids);refreshFollowButtons();if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Following sync',err));
+    if(!currentUser){postComposerOpen=false;clearProfileSubscriptions();}
     refreshFollowButtons();rebindAllProjectSocial();
+    if(activeCommentProjectId)renderComments();
     if(screens.profile.classList.contains('active')){if(!viewedProfileId||viewedProfileId===previousId)viewedProfileId=currentUser?.id||null;renderProfile();subscribeViewedProfile();}
     window.dispatchEvent(new CustomEvent('rapidfire:sessionchange',{detail:{user:currentUser}}));return currentUser;
   }
-  async function signInWithGoogle(){if(!cloud){showToast('Firebase is not connected yet');return null;}try{await cloud.signInGoogle();return true;}catch(err){showToast(err?.code==='auth/popup-closed-by-user'?'Sign-in cancelled':(err?.message||'Google sign-in failed'));return null;}}
-  async function signOut(){try{await cloud?.signOut();}catch(_){}viewedProfileId=null;}
-  async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){showToast(err?.message||'Could not publish post');}}
-  async function deletePost(id){if(!currentUser||!cloud)return;if(!confirm('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){showToast(err?.message||'Could not delete post');}}
+  async function signInWithGoogle(){
+    if(!cloud){showToast('Firebase is not connected yet');return null;}
+    try{await cloud.signInGoogle();return true;}
+    catch(err){
+      const code=String(err?.code||'');
+      if(code==='auth/popup-closed-by-user')showToast('Sign-in cancelled');
+      else if(code==='auth/unauthorized-domain')showToast('Add this site to Firebase Auth → Authorized domains');
+      else reportCloudError('Google sign-in',err,{toastUser:true});
+      return null;
+    }
+  }
+  async function signOut(){
+    try{viewedProfileId=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
+    catch(err){reportCloudError('Sign out',err,{toastUser:true});}
+  }
+  async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){reportCloudError('Post publish',err,{toastUser:true});}}
+  async function deletePost(id){if(!currentUser||!cloud)return;if(!confirm('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){reportCloudError('Post delete',err,{toastUser:true});}}
   async function deleteOwnedProject(id){const p=projectRegistry.get(id);if(!p||p.ownerUserId!==currentUser?.id||p.sourceType==='builtin')return;if(!confirm(`Delete "${p.title}"?`))return;try{if(p.remote&&cloud)await cloud.deleteProject(p);else removeLocalProject(id,{skipConfirm:true});removeProjectFromUI(id);showToast('Project deleted');}catch(err){showToast(err?.message||'Could not delete project');}}
   function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);const ix=items.findIndex(i=>(i.projectId||i.localId)===id);if(ix>=0)items.splice(ix,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
 
-  function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
+  function imagePicker(prefix){
+    const zone=$(`#${prefix}Drop`),input=$(`#${prefix}File`),preview=$(`#${prefix}Preview`),status=$(`#${prefix}Status`),remove=$(`#${prefix}Remove`);
+    let data='',sequence=0;
+    function display(url){preview.hidden=!url;if(url)preview.src=url;else preview.removeAttribute('src');remove.hidden=!url;}
+    function reset(url=''){sequence++;data='';input.value='';display(url);status.textContent='PNG, JPEG, WebP or GIF · Up to 5 MB';}
+    async function load(files){
+      const version=++sequence,file=files?.[0];if(!file)return;
+      if(files.length!==1){status.textContent='Choose one image at a time.';return;}
+      if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||!file.size||file.size>5*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF image up to 5 MB.';input.value='';return;}
+      status.textContent='Preparing image…';
+      try{
+        const bitmap=await createImageBitmap(file);
+        const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+        canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+        let prepared=canvas.toDataURL('image/webp',0.82);
+        if(prepared.length>600000){const small=document.createElement('canvas');small.width=Math.max(1,Math.round(canvas.width/2));small.height=Math.max(1,Math.round(canvas.height/2));small.getContext('2d').drawImage(canvas,0,0,small.width,small.height);prepared=small.toDataURL('image/webp',0.65);}
+        if(prepared.length>600000)throw new Error('Image could not be resized.');
+        if(version!==sequence)return;
+        data=prepared;display(data);status.textContent=`${file.name} · Ready to save`;
+      }catch(_){if(version===sequence)status.textContent='Could not read that image. Choose another file.';}
+      finally{input.value='';}
+    }
+    zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
+    zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
+    for(const event of ['dragenter','dragover'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.add('dragover');});
+    for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
+    zone.addEventListener('drop',e=>load(e.dataTransfer?.files));
+    remove.addEventListener('click',()=>reset());
+    reset();return {reset,data:()=>data};
+  }
+  const avatarPicker=imagePicker('avatar'),thumbnailPicker=imagePicker('thumbnail');
+  function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;avatarPicker.reset(user.avatarUrl);const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
   function closeProfileEditor(){const m=$('#profileEditModal');m.classList.remove('open');m.setAttribute('aria-hidden','true');}
-  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{const handle=await cloud.updateProfile(currentUser.id,currentUser.handle,patch);setCurrentUser({...currentUser,...patch,handle});closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;}}
+  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
   $('#closeProfileEdit').addEventListener('click',closeProfileEditor);$('#profileEditModal').addEventListener('click',e=>{if(e.target.id==='profileEditModal')closeProfileEditor();});$('#saveProfileEdit').addEventListener('click',saveProfileEditor);
   $('#profileTabs').addEventListener('click',e=>{const b=e.target.closest('[data-profile-tab]');if(b&&!b.hidden)renderProfileTab(b.dataset.profileTab);});
 
@@ -616,17 +735,23 @@ import { createFirebaseService } from './firebase-service.js';
     }
     indicator.textContent='Connecting…';
     try{
-      cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});indicator.textContent='Firebase connected';indicator.classList.add('online');
-      cloud.subscribeProfiles(users=>{users.forEach(registerUser);renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>console.warn('profiles listener',err));
-      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>console.warn('projects listener',err));
+      cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});
+      const health=await cloud.checkBackendAccess();
+      indicator.classList.remove('online','error');
+      if(health.firestore&&health.realtime){indicator.textContent='Firebase connected';indicator.classList.add('online');}
+      else{indicator.textContent='Firebase rules need deployment';indicator.classList.add('error');console.warn('RapidFire backend access check failed',health.errors);showToast('Firebase connected, but database rules are blocking app data');}
+      cloud.subscribeProfiles(users=>{users.forEach(registerUser);renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
+      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(existing.thumbnailUrl!==p.thumbnailUrl)mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
       cloud.onAuth(async fb=>{
         firebaseUser=fb;presenceUnsub?.();presenceUnsub=null;
         if(!fb){setCurrentUser(null);return;}
-        const profileId=await profileIdForFirebaseUser(fb);const isMaxP=profileId==='user-maxp';const baseHandle=isMaxP?'MaxP':cleanHandle((fb.displayName||fb.email?.split('@')[0]||'User')+(isMaxP?'':`-${fb.uid.slice(0,5)}`));
-        let user=registerUser({...(isMaxP?MAXP_USER:{}),id:profileId,authUid:fb.uid,handle:isMaxP?'MaxP':baseHandle,displayName:isMaxP?'MaxP':(fb.displayName||baseHandle),bio:isMaxP?'Main developer':'',avatarUrl:fb.photoURL||'',capabilities:USER_CAPABILITIES});
-        try{const stored=await cloud.upsertProfile(user);user=registerUser({...user,...stored,capabilities:USER_CAPABILITIES});}catch(err){console.warn('profile upsert',err);}
-        setCurrentUser(user);presenceUnsub=await cloud.setPresence(user.id);
-        if(isMaxP){for(const p of builtInProjects){cloud.upsertProject({...p,sourceType:'builtin',contentUrl:p.contentUrl}).catch(()=>{});}}
+        const profileId=profileIdForFirebaseUser(fb),isMaxP=profileId==='user-maxp',baseHandle=isMaxP?'MaxP':cleanHandle((fb.displayName||fb.email?.split('@')[0]||'User')+`-${fb.uid.slice(0,5)}`);
+        const seed={...(isMaxP?MAXP_USER:{}),id:profileId,authUid:fb.uid,handle:isMaxP?'MaxP':baseHandle,displayName:isMaxP?'MaxP':(fb.displayName||baseHandle),bio:isMaxP?'Main developer':'',avatarUrl:fb.photoURL||'',capabilities:USER_CAPABILITIES};
+        let stored=null;try{stored=await cloud.getProfile(profileId);}catch(err){reportCloudError('Profile load',err);}
+        let user=registerUser(stored?{...seed,...stored,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES}:seed);
+        try{const persisted=await cloud.upsertProfile(user);user=registerUser({...user,...persisted,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES});}catch(err){reportCloudError('Profile save',err,{toastUser:true});}
+        setCurrentUser(user);try{presenceUnsub=await cloud.setPresence(user.id,err=>reportCloudError('Presence',err));}catch(err){reportCloudError('Presence',err);}
+        if(isMaxP){cloud.syncBuiltins(builtInProjects.map(p=>({...p,sourceType:'builtin',contentUrl:p.contentUrl}))).catch(err=>reportCloudError('Built-in project sync',err));}
       });
       rebindAllProjectSocial();
     }catch(err){console.error('Firebase bootstrap failed',err);indicator.textContent='Firebase offline';indicator.classList.add('error');showToast('Firebase connection failed — browsing still works');renderProfile();}
@@ -637,7 +762,7 @@ import { createFirebaseService } from './firebase-service.js';
   function openPublish(){modal.classList.add('open');modal.setAttribute('aria-hidden','false');}
   function closePublish(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}
   function clearRunner(){runnerPreview.removeAttribute('srcdoc');runnerPreview.src='about:blank';runner.classList.remove('visible');}
-  function resetPublishForm(){selectedHTML='';selectedFileName='';selectedEmbedUrl='';selectedSourceMode='';htmlFile.value='';embedUrlInput.value='';clearRunner();dropzone.classList.remove('loaded');$('#dropStatus').textContent='Preview it here. Published feed cards wait for “Tap to play”.';$('#runnerName').textContent='Project preview';$('#projectName').value='';$('#projectDescription').value='';$('#projectTags').value='';$('#projectCategory').value='Game';$('#publishBtn').disabled=true;}
+  function resetPublishForm(){thumbnailPicker.reset();selectedHTML='';selectedFileName='';selectedEmbedUrl='';selectedSourceMode='';htmlFile.value='';embedUrlInput.value='';clearRunner();dropzone.classList.remove('loaded');$('#dropStatus').textContent='Preview it here. Published feed cards wait for “Tap to play”.';$('#runnerName').textContent='Project preview';$('#projectName').value='';$('#projectDescription').value='';$('#projectTags').value='';$('#projectCategory').value='Game';$('#publishBtn').disabled=true;}
   function normalizeEmbedUrl(value){
     let raw=String(value||'').trim();if(!raw)return '';
     if(!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw))raw=`https://${raw}`;
@@ -655,6 +780,7 @@ import { createFirebaseService } from './firebase-service.js';
     if(e.key!=='Escape') return;
     if(modal.classList.contains('open')){ closePublish(); return; }
     if(infoSheet.classList.contains('open')){ closeInfo(); return; }
+    if($('#commentsModal')?.classList.contains('open')){ closeComments(); return; }
     if(activeProject){ e.preventDefault(); stopActiveProject(); }
   });
 
@@ -669,10 +795,10 @@ import { createFirebaseService } from './firebase-service.js';
     button.disabled=true;button.textContent='Publishing…';
     try{
       let contentUrl='',storagePath='';const sourceType=selectedSourceMode==='html'?'html':'embed';
-      if(selectedSourceMode==='html')({contentUrl,storagePath}=await cloud.publishHtml({ownerUserId:currentUser.id,projectId,html:selectedHTML}));
+
       const project=normalizeProject({id:projectId,ownerUserId:currentUser.id,creator:currentUser.handle,title,desc,tags,category:$('#projectCategory').value,type:sourceType==='html'?'remote':'embed',sourceType,contentUrl,storagePath,embedUrl:selectedSourceMode==='embed'?selectedEmbedUrl:'',remote:true,createdAt:Date.now(),views:'0',likes:'0',saves:'0',shares:'0'});
-      await cloud.upsertProject(project);upsertSearchItem(project);const target=mountProject(project,{prepend:true});addRecent(title);renderSearch();closePublish();go('home');target.scrollIntoView({block:'start'});showToast(`${title} published`);resetPublishForm();
-    }catch(err){console.error(err);const code=String(err?.code||'');if(code.includes('storage')||/402|403|billing|blaze/i.test(String(err?.message||'')))showToast('HTML publishing needs Firebase Storage on the Blaze plan');else showToast(err?.message||'Publish failed');}
+      const saved=await cloud.upsertProject(project,{html:selectedSourceMode==='html'?selectedHTML:undefined,thumbnailImage:thumbnailPicker.data()});const published=normalizeProject({...project,...saved});upsertSearchItem(published);const target=mountProject(published,{prepend:true});addRecent(title);renderSearch();closePublish();go('home');target.scrollIntoView({block:'start'});showToast(`${title} published`);resetPublishForm();
+    }catch(err){console.error(err);showToast(err?.message||'Could not publish. Please try again.');}
     finally{button.disabled=false;button.textContent='Publish to RapidFire';}
   });
 
@@ -683,7 +809,7 @@ import { createFirebaseService } from './firebase-service.js';
     auth:Object.freeze({signInWithGoogle,signOut}),
     addProject(project,options={}){const p=normalizeProject(project);upsertSearchItem(p);const el=mountProject(p,options);renderSearch($('#searchInput').value);return el;},
     play(article){setProjectPlaying(article,true);},stop(){stopActiveProject();},next(article=centeredProject()){return scrollToAdjacentProject(article,1);},previous(article=centeredProject()){return scrollToAdjacentProject(article,-1);},
-    removeProject:deleteOwnedProject,openProfile,normalizeProject,normalizeEmbedUrl,instrumentProjectHTML,brandLogoDataURL:BRAND_LOGO_DATA_URL
+    removeProject:deleteOwnedProject,openProfile,openComments,normalizeProject,normalizeEmbedUrl,instrumentProjectHTML,brandLogoDataURL:BRAND_LOGO_DATA_URL
   });
   renderProfile();
   bootstrapFirebase();

@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function owns(id) {
+      return request.auth != null && (id == 'user-maxp'
+        ? request.auth.token.email == 'timmiballz22@gmail.com' && request.auth.token.email_verified == true
+        : id == request.auth.uid);
+    }
+    // Optional future Storage usage. Spark uploads use Firestore instead.
+    match /projects/{owner}/{project}/{file=**} { allow read: if true; allow write: if owns(owner); }
+    match /thumbnails/{owner}/{project}/{file=**} { allow read: if true; allow write: if owns(owner); }
+    match /avatars/{owner}/{file=**} { allow read: if true; allow write: if owns(owner); }
+  }
+}

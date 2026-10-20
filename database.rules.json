@@ -1,0 +1,45 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "social": {
+      "projects": {
+        "$project": {
+          ".read": true,
+          "$kind": {
+            "$entry": {
+              ".write": "(($kind === 'likes' || $kind === 'saves' || $kind === 'shares') && (auth != null && (($entry === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : $entry === auth.uid))) || ($kind === 'comments' && (data.exists() ? (auth != null && ((data.child('authorProfileId').val() === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : data.child('authorProfileId').val() === auth.uid)) : (auth != null && ((newData.child('authorProfileId').val() === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : newData.child('authorProfileId').val() === auth.uid))))",
+              ".validate": "$kind !== 'comments' || (newData.hasChildren(['authorProfileId','text','at']) && newData.child('authorProfileId').isString() && newData.child('text').isString() && (!data.exists() || newData.child('authorProfileId').val() === data.child('authorProfileId').val()))"
+            }
+          }
+        }
+      },
+      "users": {
+        "$profile": {
+          "following": {
+            ".read": true,
+            "$target": {
+              ".write": "auth != null && (($profile === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : $profile === auth.uid)"
+            }
+          },
+          "followers": {
+            ".read": true,
+            "$viewer": {
+              ".write": "auth != null && (($viewer === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : $viewer === auth.uid)"
+            }
+          },
+          "saved": {
+            ".read": "auth != null && (($profile === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : $profile === auth.uid)",
+            ".write": "auth != null && (($profile === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : $profile === auth.uid)"
+          }
+        }
+      }
+    },
+    "presence": {
+      "$profile": {
+        ".read": true,
+        ".write": "auth != null && (($profile === 'user-maxp') ? (auth.token.email === 'timmiballz22@gmail.com' && auth.token.email_verified === true) : $profile === auth.uid)"
+      }
+    }
+  }
+}

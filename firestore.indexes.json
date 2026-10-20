@@ -1,0 +1,12 @@
+{
+  "indexes": [{"collectionGroup":"projects","queryScope":"COLLECTION","fields":[{"fieldPath":"published","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},{
+    "collectionGroup": "posts",
+    "queryScope": "COLLECTION",
+    "fields": [{ "fieldPath":"ownerUserId", "order":"ASCENDING" }, { "fieldPath":"createdAt", "order":"DESCENDING" }]
+  }],
+  "fieldOverrides": [
+    {"collectionGroup":"source","fieldPath":"source","indexes":[]},
+    {"collectionGroup":"users","fieldPath":"avatarUrl","indexes":[]},
+    {"collectionGroup":"projects","fieldPath":"thumbnailUrl","indexes":[]}
+  ]
+}
