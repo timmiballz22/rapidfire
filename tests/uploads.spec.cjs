@@ -71,4 +71,3 @@ test('upload controls fit a narrow viewport',async({page})=>{
   const box=await page.locator('#thumbnailDrop').boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/upload-mobile.png'});
 });
-

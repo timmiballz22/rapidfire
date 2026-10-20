@@ -11,7 +11,6 @@
     "@firebase/rules-unit-testing": "latest",
     "@playwright/test": "^1.56.0",
     "firebase": "latest",
-    "firebase-tools": "latest",
-    "node": "^22.23.3"
+    "firebase-tools": "latest"
   }
 }
