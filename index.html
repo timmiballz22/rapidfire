@@ -805,12 +805,13 @@ async function createFirebaseService(firebaseConfig, options={}){
 
   function normalizeProject(raw){
     const creatorSeed=String(raw.creator||raw.ownerHandle||'Unknown creator');
-    const owner=raw.ownerUserId?(userRegistry.get(String(raw.ownerUserId))||ensureUserByHandle(creatorSeed,{id:String(raw.ownerUserId)})):ensureUserByHandle(creatorSeed);
+    const owner=raw.isDefault?null:raw.ownerUserId?(userRegistry.get(String(raw.ownerUserId))||ensureUserByHandle(creatorSeed,{id:String(raw.ownerUserId)})):ensureUserByHandle(creatorSeed);
     const sourceType=String(raw.sourceType||raw.type||'local');
     return {
       schemaVersion:PROJECT_SCHEMA_VERSION,
-      id:String(raw.id||`project-${Math.random().toString(36).slice(2,9)}`),ownerUserId:owner.id,
-      title:String(raw.title||'Untitled Project'),creator:owner.handle,desc:String(raw.desc||raw.description||'No description yet.'),
+      id:String(raw.id||`project-${Math.random().toString(36).slice(2,9)}`),ownerUserId:owner?.id||'',
+      isDefault:!!raw.isDefault,originalCreator:String(raw.originalCreator||''),sourceUrl:String(raw.sourceUrl||''),license:String(raw.license||''),licenseUrl:String(raw.licenseUrl||''),
+      title:String(raw.title||'Untitled Project'),creator:owner?.handle||'Default Project',desc:String(raw.desc||raw.description||'No description yet.'),
       tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
       views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
       thumbnailUrl:String(raw.thumbnailUrl||''),type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
@@ -824,9 +825,13 @@ async function createFirebaseService(firebaseConfig, options={}){
   }
   function embedHost(url){ try{ return new URL(url).host || 'external project'; }catch(_){ return 'external project'; } }
   function renderHeader(project){
+    if(project.isDefault)return `<header class="creator-bar">${renderBrandLogo()}<span class="creator-identity"><span class="creator-name">Default Project</span><span class="creator-hint">${escapeHTML(project.originalCreator||'RapidFire starter')}</span></span><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
     const owner=userRegistry.get(project.ownerUserId)||ensureUserByHandle(project.creator,{id:project.ownerUserId});
     const suffix=project.local?'local publish':`${escapeHTML(project.views)} views`;
-    return `<header class="creator-bar">${renderBrandLogo()}<button class="creator-profile-hitbox" data-open-profile="${escapeHTML(project.ownerUserId)}" type="button" aria-label="Open ${escapeHTML(owner.handle)} profile">${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.handle)}</span><span class="creator-hint">View profile</span></span></button><button class="follow-btn" data-follow data-follow-user="${escapeHTML(project.ownerUserId)}">Follow</button><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)} · ${suffix}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
+    return `<header class="creator-bar">${renderBrandLogo()}<button class="creator-profile-hitbox" data-open-profile="${escapeHTML(project.ownerUserId)}" type="button" aria-label="Open ${escapeHTML(owner.handle)} profile">${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.displayName)}</span><span class="creator-hint">@${escapeHTML(owner.handle)}</span></span></button><button class="follow-btn" data-follow data-follow-user="${escapeHTML(project.ownerUserId)}">Follow</button><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)} · ${suffix}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
+  }
+  function refreshCreatorIdentities(){
+    $$('.project').forEach(article=>{const owner=userRegistry.get(article.dataset.ownerUserId),hit=$('[data-open-profile]',article);if(!owner||!hit)return;hit.innerHTML=`${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.displayName)}</span><span class="creator-hint">@${escapeHTML(owner.handle)}</span></span>`;hit.setAttribute('aria-label',`Open ${owner.handle} profile`);});
   }
   function renderRail(project){
     return `<div class="rail"><button class="rail-btn" data-like aria-label="Like">${ICONS.like}<span class="count" data-like-count>${escapeHTML(project.likes)}</span></button><button class="rail-btn" data-comment aria-label="Comments">${ICONS.comment}<span class="count" data-comment-count>0</span></button><button class="rail-btn" data-save aria-label="Save">${ICONS.save}<span class="count" data-save-count>${escapeHTML(project.saves)}</span></button><button class="rail-btn" data-share aria-label="Share">${ICONS.share}<span class="count" data-share-count>${escapeHTML(project.shares||'0')}</span></button><button class="rail-btn" data-info aria-label="Project details">${ICONS.info}</button><button class="rail-btn" data-fullscreen aria-label="Fullscreen">${ICONS.fullscreen}</button></div>`;
@@ -845,7 +850,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     math(){ return '<div class="project-app math-card"><div class="project-shell"><div class="project-kicker">Fast learning game</div><h2>Math Rush</h2><p>Pick the answer. Questions speed up as your streak grows.</p><div class="math-stage"><div class="math-question" data-role="math-question">7 × 8</div><div class="math-answers" data-role="math-answers"></div><div class="mini-stat-row"><span class="mini-stat" data-role="math-score">Score 0</span><span class="mini-stat" data-role="math-streak">Streak 0</span><span class="mini-stat" data-role="math-best">Best 0</span></div></div></div></div>'; },
     local(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · local HTML project</p></div></div>`; },
     builtin(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads allow-same-origin" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · ${escapeHTML(project.creator)} project</p></div></div>`; },
-    remote(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads" allow="fullscreen; autoplay; gamepad" referrerpolicy="no-referrer" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · published HTML</p></div></div>`; },
+    remote(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads" allow="fullscreen; autoplay; gamepad" referrerpolicy="no-referrer" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · ${project.sourceType==='flash'?'Flash classic':'HTML project'}</p></div></div>`; },
     embed(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-downloads allow-same-origin" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write" referrerpolicy="strict-origin-when-cross-origin" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · ${escapeHTML(embedHost(project.embedUrl))}</p></div></div>`; }
   };
   const PROJECT_HUD = {
@@ -855,7 +860,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   };
   function renderBody(project){ return (BODY_RENDERERS[project.type] || BODY_RENDERERS.local)(project)+(project.thumbnailUrl?`<img class="project-thumbnail" src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''); }
   function renderThumbnail(project){return `<div class="thumb ${project.thumbnailUrl?'has-image':escapeHTML(project.type||'neon')}">${project.thumbnailUrl?`<img src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''}</div>`;}
-  function renderHud(project){ const label=PROJECT_HUD[project.type]; return label?`<div class="game-hud"><strong>${escapeHTML(label[0])}</strong><span>${escapeHTML(label[1])}</span></div>`:''; }
+  function renderHud(project){ const label=project.sourceType==='flash'?['FLASH','Arrow keys / Space · tap to load']:PROJECT_HUD[project.type]; return label?`<div class="game-hud"><strong>${escapeHTML(label[0])}</strong><span>${escapeHTML(label[1])}</span></div>`:''; }
   function projectArticle(project){
     const article = document.createElement('article');
     article.className = 'project';
@@ -1111,6 +1116,9 @@ async function createFirebaseService(firebaseConfig, options={}){
   }
 
   // ---------- feed data ----------
+  // Embedded from projects/defaults/catalog.json by scripts/sync-inline.mjs.
+  const defaultCatalog = /* DEFAULT_CATALOG_START */[{"id":"default-flxinvaders","title":"FlxInvaders","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Flx-Invaders","license":"MIT","licenseUrl":"projects/defaults/flxinvaders-LICENSE.txt","desc":"Defend against waves of pixel invaders. Arrow keys to move, Space to fire.","tags":["flash","arcade","space"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxinvaders.svg","contentUrl":"projects/defaults/flxinvaders.html","downloadUrl":"https://www.flixel.org/flxinvaders/FlxInvaders.swf","sha256":"562ddb1c28bc3ef838fd173ea232f3c2f4e3227e9eebe16965f83a32a1e1d95b"},{"id":"default-2048","title":"2048","originalCreator":"Gabriele Cirulli","sourceUrl":"https://github.com/gabrielecirulli/2048","license":"MIT","licenseUrl":"projects/defaults/2048-LICENSE.txt","desc":"Slide matching tiles together and work toward 2048. Use arrow keys or swipe.","tags":["puzzle","numbers","strategy"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/2048.svg","contentUrl":"projects/defaults/2048/index.html"},{"id":"default-fluid","title":"WebGL Fluid Simulation","originalCreator":"Pavel Dobryakov","sourceUrl":"https://github.com/PavelDoGreat/WebGL-Fluid-Simulation","license":"MIT","licenseUrl":"projects/defaults/fluid-LICENSE.txt","desc":"Paint swirling fluid with your pointer. Explore color, motion, and the simulation controls.","tags":["art","simulation","interactive"],"category":"Art","isDefault":true,"type":"embed","sourceType":"embed","embedUrl":"https://paveldogreat.github.io/WebGL-Fluid-Simulation/","thumbnailUrl":"projects/defaults/fluid.svg"},{"id":"default-mode","title":"Mode","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Mode","license":"MIT","licenseUrl":"projects/defaults/mode-LICENSE.txt","desc":"Explore a destructible pixel platformer. Follow the on-screen keyboard controls.","tags":["flash","platformer","action"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/mode.svg","contentUrl":"projects/defaults/mode.html","downloadUrl":"https://www.adamatomic.com/mode/Mode.swf","sha256":"7a6cd90db357fd98201305da208ae94bdaacb43b1622cc0f8d48a87e4b9f8d2d"},{"id":"default-0hh1","title":"0h h1","originalCreator":"Martin Kool / Q42","sourceUrl":"https://github.com/florisluiten/0hh1","license":"MIT","licenseUrl":"projects/defaults/0hh1-LICENSE.txt","desc":"A little logic game: balance the red and blue tiles without triples. Tap tiles to change their color.","tags":["logic","puzzle","tiles"],"category":"Game","isDefault":true,"type":"embed","sourceType":"embed","embedUrl":"https://0hh1.com/","thumbnailUrl":"projects/defaults/0hh1.svg"},{"id":"default-astray","title":"Astray","originalCreator":"wwwtyro","sourceUrl":"https://github.com/wwwtyro/Astray","license":"Unlicense","licenseUrl":"projects/defaults/astray-LICENSE.txt","desc":"Guide a ball through an increasingly complex maze. Use the arrow keys.","tags":["maze","3d","physics"],"category":"Game","isDefault":true,"type":"embed","sourceType":"embed","embedUrl":"https://wwwtyro.github.io/Astray/","thumbnailUrl":"projects/defaults/astray.svg"},{"id":"default-flxteroids","title":"FlxTeroids","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/FlxTeroids","license":"MIT","licenseUrl":"projects/defaults/flxteroids-LICENSE.txt","desc":"Pilot a tiny ship through an asteroid field. Arrow keys to steer and thrust, Space to fire.","tags":["flash","arcade","asteroids"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxteroids.svg","contentUrl":"projects/defaults/flxteroids.html","downloadUrl":"https://www.flixel.org/flxteroids/FlxTeroids.swf","sha256":"7fe5f2abd50c32cd1d451d4e587223438b7d3a0166be9d6153143583e20a7cf3"},{"id":"default-hextris","title":"Hextris","originalCreator":"Logan Engstrom, Garrett Finucane, Noah Moroze, and Michael Yang","sourceUrl":"https://github.com/Hextris/hextris","license":"GPL-3.0-or-later","licenseUrl":"projects/defaults/hextris-LICENSE.txt","desc":"Rotate the hexagon to stack and match falling colors. Use Left/Right or tap the sides.","tags":["puzzle","arcade","reflex"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/hextris.svg","contentUrl":"projects/defaults/hextris/index.html"}]/* DEFAULT_CATALOG_END */;
+  const defaultProjects=defaultCatalog.map(p=>normalizeProject({...p,trend:true}));
   const baseProjects = [
     {id:'dash',title:'Sigma Geometry Dash',creator:'User67',desc:'A polished neon flight challenge with scoring, hazards and quick-restart arcade pacing. Tap or press Space to boost.',tags:['arcade','rhythm','skill'],category:'Game',views:'67M',likes:'6767',saves:'26767',shares:'67',type:'dash',trend:true},
     {id:'pulse',title:'Beat Burst',creator:'BeatBox67',desc:'A one-button rhythm microgame. Feel the 700 ms pulse, tap at the peak, and build a precision streak.',tags:['rhythm','music','reaction'],category:'Game',views:'2.1M',likes:'94K',saves:'31K',shares:'1.2K',type:'pulse',trend:true},
@@ -1120,7 +1128,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     {id:'memory',title:'Signal Stack',creator:'MindByte',desc:'A fast visual memory game. Watch the tile sequence and repeat it as the chain grows every round.',tags:['memory','puzzle','focus'],category:'Game',views:'1.4M',likes:'73K',saves:'26K',shares:'960',type:'memory',trend:true},
     {id:'math',title:'Math Rush',creator:'TinyTools',desc:'Rapid-fire mental math with adaptive difficulty, streak scoring and instant answer feedback.',tags:['math','education','speed'],category:'Education',views:'760K',likes:'41K',saves:'21K',shares:'430',type:'math',trend:false},
     {id:'rizz',title:'Skibidi Rizz Simulator',creator:'AuraFactory',desc:'A repeatable aura-roll simulator with a smoother probability curve and a session best to chase.',tags:['simulator','fun','random'],category:'Game',views:'4.2M',likes:'67K',saves:'13K',shares:'670',type:'rizz',trend:true}
-  ].map(normalizeProject);
+  ].map(p=>normalizeProject({...p,isDefault:true,originalCreator:'RapidFire',views:'0',likes:'0',saves:'0',shares:'0'}));
   const builtInProjects = [
     {id:'maxp-catstrike',title:'CatStrike: Global Offensive',ownerUserId:'user-maxp',creator:'MaxP',desc:'A full 3D tactical shooter project with multiple modes, weapon systems, bots, maps, HUD, audio and performance-focused rendering.',tags:['shooter','3d','tactical','fps'],category:'Game',views:'0',likes:'0',saves:'0',shares:'0',type:'builtin',sourceType:'builtin',trend:false,contentUrl:'projects/catstrike.html'},
     {id:'maxp-killmark',title:'Killmark',ownerUserId:'user-maxp',creator:'MaxP',desc:'Story and arcade combat with Deathmatch, Team Deathmatch, Gun Game and Capture The Flag, plus bots, loadouts, drops and multi-path maps.',tags:['shooter','arcade','story','combat'],category:'Game',views:'0',likes:'0',saves:'0',shares:'0',type:'builtin',sourceType:'builtin',trend:false,contentUrl:'projects/killmark.html'},
@@ -1131,17 +1139,14 @@ async function createFirebaseService(firebaseConfig, options={}){
 
   // Search index stays separate from rendered feed so future backend results can drop in cleanly.
   const items = [
-    {title:'tiki tiki six seven',creator:'BeatBox67',views:'1.7M',likes:'89K',desc:'A rhythm reaction project.',tags:['rhythm','music','reaction'],category:'Game',type:'pulse',trend:false},
-    {title:'Skibidi Toilet Attack 2',creator:'AuraFactory',views:'8.4M',likes:'440K',desc:'Fast arcade survival project.',tags:['arcade','survival','fun'],category:'Game',type:'neon',trend:false},
-    {title:'Chemistry for Beginners',creator:'MoleculeKid',views:'320K',likes:'18K',desc:'Simple chemistry learning sandbox.',tags:['chemistry','education','sandbox'],category:'Education',type:'lab',trend:false},
-    {title:'How to make spaghetti interactive',creator:'KitchenClick',views:'760K',likes:'31K',desc:'Clickable cooking walkthrough.',tags:['cooking','interactive','guide'],category:'Education',type:'calc',trend:false},
+    ...defaultProjects.map(p=>({...p,projectId:p.id})),
     ...builtInProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:'neon',sourceType:'builtin'})),
     ...baseProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:p.type,trend:p.trend})),
     ...storedProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:'neon',sourceType:p.type,localId:p.id}))
   ];
   function upsertSearchItem(project){
     const idx=items.findIndex(i=>i.localId===project.id || (i.title===project.title && i.creator===project.creator));
-    const item={projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
+    const item={isDefault:project.isDefault,originalCreator:project.originalCreator,sourceUrl:project.sourceUrl,license:project.license,licenseUrl:project.licenseUrl,projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
     idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
   }
   function removeLocalProject(projectId,{skipConfirm=false}={}){
@@ -1155,6 +1160,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   }
 
   storedProjects.forEach(p=>mountProject(p));
+  defaultProjects.forEach(p=>mountProject(p));
   builtInProjects.forEach(p=>mountProject(p));
   baseProjects.forEach(p=>mountProject(p));
   queueMicrotask(()=>{const wanted=new URL(location.href).searchParams.get('project');if(wanted)openProjectById(wanted);});
@@ -1173,8 +1179,17 @@ async function createFirebaseService(firebaseConfig, options={}){
   const infoSheet = $('#infoSheet');
   function openInfo(projectEl){
     if(!projectEl) return; const tags=(projectEl.dataset.tags||'').split(',').map(t=>t.trim()).filter(Boolean);
+    const project=projectRegistry.get(projectEl.dataset.projectId);
     $('#infoTitle').textContent=projectEl.dataset.project||'Project'; $('#infoCreator').textContent=`by ${projectEl.dataset.creator||'Unknown creator'}`; $('#infoDescription').textContent=projectEl.dataset.desc||'No description yet.';
     $('#infoTags').innerHTML=tags.map((t,i)=>`<span class="tag ${i===0?'accent':''}">#${escapeHTML(t.replace(/^#/,''))}</span>`).join(''); $('#infoExtra').textContent=projectEl.dataset.category||'RapidFire project';
+    if(project?.isDefault){
+      $('#infoCreator').textContent=project.originalCreator?`Created by ${project.originalCreator} · Default Project`:'Default Project';
+      const extra=$('#infoExtra');extra.textContent=`${project.category} · ${project.license||'RapidFire starter'}`;
+      for(const [label,url] of [['Original source',project.sourceUrl],['License',project.licenseUrl]]){
+        if(!url)continue;const target=new URL(url,location.href);if(!['https:','http:'].includes(target.protocol))continue;
+        const link=document.createElement('a');link.textContent=label;link.href=target.href;link.target='_blank';link.rel='noopener noreferrer';link.style.cssText='color:var(--accent);margin-left:16px';extra.append(link);
+      }
+    }
     infoSheet.classList.add('open'); infoSheet.setAttribute('aria-hidden','false');
   }
   function closeInfo(){ infoSheet.classList.remove('open'); infoSheet.setAttribute('aria-hidden','true'); }
@@ -1260,7 +1275,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   }
 
   // ---------- search ----------
-  let recentSearches=safeStore.get('rapidfire.recent.v2',['tiki tiki six seven','Skibidi Toilet Attack 2','Science Demo','Math Calculator Online']);
+  let recentSearches=safeStore.get('rapidfire.recent.v2',['FlxInvaders','2048','WebGL Fluid Simulation','Astray']);
   const searchContent=$('#searchContent');
   function addRecent(value){const v=String(value||'').trim();if(!v)return;recentSearches=[v,...recentSearches.filter(x=>x.toLowerCase()!==v.toLowerCase())].slice(0,5);safeStore.set('rapidfire.recent.v2',recentSearches);}
   function suggestionRow(text,kind){return `<button class="suggestion" data-query="${escapeHTML(text)}"><span class="trend" style="color:${kind==='trend'?'var(--accent)':'#a7a7ad'}">${kind==='trend'?'🔥':'⌕'}</span><span>${escapeHTML(text)}</span></button>`;}
@@ -1268,7 +1283,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     const q=query.trim().toLowerCase();
     if(!q){const recentHTML=recentSearches.length?recentSearches.map(x=>suggestionRow(x,'recent')).join(''):'<div class="empty" style="height:auto;padding:18px">No recent searches.</div>';const trendingHTML=items.filter(i=>i.trend).map(i=>suggestionRow(i.title,'trend')).join('');searchContent.innerHTML=`<div class="search-section-head"><span>Recently searched</span><button class="tiny-action" id="clearRecent">Clear</button></div>${recentHTML}<div class="search-section-head"><span>Trending</span></div>${trendingHTML}`;$$('.suggestion',searchContent).forEach(b=>b.addEventListener('click',()=>{addRecent(b.dataset.query);$('#searchInput').value=b.dataset.query;renderSearch(b.dataset.query);}));$('#clearRecent')?.addEventListener('click',()=>{recentSearches=[];safeStore.set('rapidfire.recent.v2',recentSearches);renderSearch();});return;}
     const users=[...userRegistry.values()].filter(u=>[u.handle,u.displayName,u.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
-    const result=items.filter(i=>[i.title,i.creator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
+    const result=items.filter(i=>[i.title,i.creator,i.originalCreator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
     const userHTML=users.length?`<div class="section-label">People</div>${users.map(u=>`<button class="user-result-card" data-user-result="${escapeHTML(u.id)}">${userAvatarHTML(u)}<span class="user-result-copy"><strong>${escapeHTML(u.displayName)}</strong><span>@${escapeHTML(u.handle)}${u.bio?` · ${escapeHTML(u.bio)}`:''}</span></span></button>`).join('')}`:'';
     const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}">${renderThumbnail(i)}<div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
     if(!userHTML&&!projectsHTML){searchContent.innerHTML='<div class="empty">No people or projects found.<br/>Try a title, creator, category or tag.</div>';return;}
@@ -1349,7 +1364,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     else if(tab==='following')profilePanel.innerHTML=`<div class="panel-head"><h2>Following</h2><span class="result-meta">${profileFollowing.length} total</span></div>${peopleRows(profileFollowing)}`;
     else if(tab==='saved'){
       if(!isOwn){renderProfileTab('projects');return;}
-      const saved=profileSavedIds.map(projectById).filter(Boolean);profilePanel.innerHTML=`<div class="panel-head"><h2>Saved projects</h2><span class="result-meta">${saved.length} total</span></div>${saved.length?saved.map(p=>`<div class="saved-project-row"><div><strong>${escapeHTML(p.title)}</strong><div class="result-meta">@${escapeHTML(p.creator)} · ${escapeHTML(p.category)}</div></div><button data-open-saved="${escapeHTML(p.id)}">Open</button></div>`).join(''):'<div class="empty-compact">Save a project from the feed and it will appear here.</div>'}`;$$('[data-open-saved]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProjectById(b.dataset.openSaved)));
+      const saved=profileSavedIds.map(projectById).filter(Boolean);profilePanel.innerHTML=`<div class="panel-head"><h2>Saved projects</h2><span class="result-meta">${saved.length} total</span></div>${saved.length?saved.map(p=>`<div class="saved-project-row"><div><strong>${escapeHTML(p.title)}</strong><div class="result-meta">${p.isDefault?'Default Project':`@${escapeHTML(p.creator)}`} · ${escapeHTML(p.category)}</div></div><button data-open-saved="${escapeHTML(p.id)}">Open</button></div>`).join(''):'<div class="empty-compact">Save a project from the feed and it will appear here.</div>'}`;$$('[data-open-saved]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProjectById(b.dataset.openSaved)));
     }
     $$('[data-person-profile]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.personProfile)));
   }
@@ -1419,7 +1434,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       finally{input.value='';}
     }
     zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
-    zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
+    // This is a native button: Enter/Space activate its click handler.
     for(const event of ['dragenter','dragover'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.add('dragover');});
     for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
     zone.addEventListener('drop',e=>load(e.dataTransfer?.files));
@@ -1429,7 +1444,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   const avatarPicker=imagePicker('avatar'),thumbnailPicker=imagePicker('thumbnail');
   function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;avatarPicker.reset(user.avatarUrl);const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
   function closeProfileEditor(){const m=$('#profileEditModal');m.classList.remove('open');m.setAttribute('aria-hidden','true');}
-  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
+  async function saveProfileEditor(){if(!currentUser||!cloud)return;const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});refreshCreatorIdentities();closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
   $('#closeProfileEdit').addEventListener('click',closeProfileEditor);$('#profileEditModal').addEventListener('click',e=>{if(e.target.id==='profileEditModal')closeProfileEditor();});$('#saveProfileEdit').addEventListener('click',saveProfileEditor);
   $('#profileTabs').addEventListener('click',e=>{const b=e.target.closest('[data-profile-tab]');if(b&&!b.hidden)renderProfileTab(b.dataset.profileTab);});
 
@@ -1449,8 +1464,8 @@ async function createFirebaseService(firebaseConfig, options={}){
       indicator.classList.remove('online','error');
       if(health.firestore&&health.realtime){indicator.textContent='Firebase connected';indicator.classList.add('online');}
       else{indicator.textContent='Firebase rules need deployment';indicator.classList.add('error');console.warn('RapidFire backend access check failed',health.errors);showToast('Firebase connected, but database rules are blocking app data');}
-      cloud.subscribeProfiles(users=>{users.forEach(registerUser);renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
-      cloud.subscribeProjects(projects=>{for(const raw of projects){const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(existing.thumbnailUrl!==p.thumbnailUrl)mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      cloud.subscribeProfiles(users=>{users.forEach(registerUser);refreshCreatorIdentities();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
+      cloud.subscribeProjects(projects=>{for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?'builtin':'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(existing.thumbnailUrl!==p.thumbnailUrl)mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
       cloud.onAuth(async fb=>{
         firebaseUser=fb;presenceUnsub?.();presenceUnsub=null;
         if(!fb){setCurrentUser(null);return;}
