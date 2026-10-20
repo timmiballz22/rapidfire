@@ -21,7 +21,7 @@ npm run test:browser
 npx firebase emulators:exec --project demo-rapidfire --only auth,firestore,database,storage "npm test"
 ```
 
-The rules tests require Java 21 and use a demo project, never production. They verify permitted own-account operations, authenticated REST POSTs, private saved lists, and rejected account/owner/author/handle spoofing. Browser tests use a deterministic service boundary for upload, retry, keyboard and mobile flows. GitHub CI runs both suites.
+The rules tests require Java 21 and use a demo project, never production. They verify permitted own-account operations, authenticated REST POSTs, private saved lists, and rejected account/owner/author/handle spoofing. Browser tests combine deterministic failure/retry checks with two real emulator-backed users for image uploads, HTML publishing, likes, saves, shares, follows, posts, comments and reload persistence. Each of the ten embedded projects is launched in Chromium. GitHub CI repeats the rules/service suite three times and the browser suite twice.
 
 After editing `js/app.js` or `js/firebase-service.js`, run `node scripts/sync-inline.mjs` to update the self-contained page. This preserves GitHub Pages compatibility and prevents the two copies from diverging.
 
@@ -33,7 +33,7 @@ After editing `js/app.js` or `js/firebase-service.js`, run `node scripts/sync-in
 
 Storage rules are included for a future Storage-enabled project but are not needed or deployed by the Spark app. For optional Firebase Hosting, build and deploy with `npx firebase deploy --only hosting`. Keep all private credentials out of Git.
 
-For automatic rule deployment from GitHub, configure the protected `firebase-production` environment with `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` variables. The manual workflow uses short-lived Google Workload Identity Federation instead of a committed service account key. Configure its service account with only the permissions needed to publish the two databases' rules and indexes. The default test workflow requires no cloud credentials.
+For automatic rule deployment from GitHub, configure the protected `firebase-production` environment with `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` variables. The deployment workflow runs when rules change on main, or can be started manually. It uses short-lived Google Workload Identity Federation instead of a committed service account key. Configure its service account with only the permissions needed to publish the two databases' rules and indexes. The default test workflow requires no cloud credentials.
 
 ## Social and embedded-project repair, 2026-10-20
 The legacy package rejected newer fields, large inline photo URLs, and HTML source subcollections. Deploying static code alone does not publish Firebase rules. The current implementation accepts normal owner-authenticated actions while protecting account identity, unique handles, admin paths and trusted runtimes.

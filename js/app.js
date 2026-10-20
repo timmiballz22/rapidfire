@@ -756,7 +756,7 @@
     function display(url){preview.hidden=!url;if(url)preview.src=url;else preview.removeAttribute('src');remove.hidden=!url;}
     function reset(url=''){sequence++;pending=false;data='';input.value='';display(url);status.textContent='PNG, JPEG, WebP or GIF · Up to 5 MB';}
     async function load(files){
-      const version=++sequence,file=files?.[0];if(!file)return;
+      const version=++sequence,file=files?.[0];pending=false;if(!file)return;
       if(files.length!==1){status.textContent='Choose one image at a time.';return;}
       if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||!file.size||file.size>5*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF image up to 5 MB.';input.value='';return;}
       pending=true;status.textContent='Preparing image…';

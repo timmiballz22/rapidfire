@@ -4,7 +4,9 @@ for(const entry of catalog)test('embedded project runs and unloads: '+entry.titl
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/firebasejs/**',r=>r.abort());await page.goto('/index.html');
   const article=page.locator('[data-project-id="'+entry.id+'"]');
-  await article.scrollIntoViewIfNeeded();await article.locator('[data-play]').click();
+  await article.scrollIntoViewIfNeeded();
+  await expect.poll(()=>article.evaluate(el=>{const box=el.getBoundingClientRect(),root=document.getElementById('feed').getBoundingClientRect();return Math.max(0,Math.min(box.bottom,root.bottom)-Math.max(box.top,root.top))/box.height;})).toBeGreaterThan(0.9);
+  await article.locator('[data-play]').click();
   const frame=article.frameLocator('iframe');
   if(entry.sourceType==='flash'){
     await expect(frame.locator('body')).toHaveAttribute('data-ready','true',{timeout:30000});
