@@ -18,7 +18,10 @@ for(const entry of catalog)test('embedded project runs and unloads: '+entry.titl
     await expect.poll(()=>gamePage.evaluate(()=>app.started)).toBe(true);
     await expect(frame.locator('#title')).not.toHaveClass(/show01/);
     await frame.locator('[data-action="close-titleScreen"]').click();await expect(frame.locator('#game')).toBeVisible();
-  }else await expect(frame.locator('canvas').first()).toBeVisible();
+  }else {
+    // Hosted Chromium compiles WebGL shaders in software; cold startup can take 10–20 seconds.
+    await expect(frame.locator('canvas').first()).toBeVisible({timeout:30000});
+  }
   await article.screenshot({path:'test-results/catalog-'+entry.id+'.png'});
   await article.locator('[data-stop-play]').click();await expect(article.locator('iframe')).toHaveAttribute('src','about:blank');expect(errors).toEqual([]);
 });
