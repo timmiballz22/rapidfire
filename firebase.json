@@ -10,7 +10,9 @@
     "rules": "storage.rules"
   },
   "hosting": {
+    "site": "rapidfire-31bae",
     "public": "dist",
+    "predeploy": ["npm run build"],
     "ignore": [
       "firebase.json",
       "**/.*",
