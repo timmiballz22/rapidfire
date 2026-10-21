@@ -35,10 +35,10 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
       - run: npm ci
       - run: npx firebase deploy --project rapidfire-31bae --only hosting,firestore,database --non-interactive
-      - name: Verify both Hosting domains serve RapidFire
+      - name: Verify all Hosting domains serve RapidFire
         shell: bash
         run: |
-          for origin in https://rapidfire-31bae.web.app https://rapidfire-31bae.firebaseapp.com; do
+          for origin in https://rapidfire-31bae.web.app https://rapidfire-31bae.firebaseapp.com https://rapidfire-project.web.app https://rapidfire-project.firebaseapp.com; do
             curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 "$origin/index.html" -o /tmp/rapidfire-live.html
             cmp dist/index.html /tmp/rapidfire-live.html
             curl --fail --silent --show-error "$origin/projects/defaults/catalog.json" -o /tmp/rapidfire-catalog.json
