@@ -329,6 +329,22 @@
   .saved-project-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border:1px solid #3d3d42;background:#29292d;border-radius:13px;margin-top:8px}.saved-project-row button{border:1px solid #4b4b50;background:#37373b;color:#fff;border-radius:9px;padding:7px 10px;cursor:pointer}
   @media (max-width:760px){.creator-bar{grid-template-columns:auto minmax(0,1fr) auto;column-gap:8px}.creator-profile-hitbox{gap:7px}.creator-hint{display:none}.creator-meta{gap:5px}.profile-actions{grid-column:1/-1;grid-template-columns:1fr 1fr;min-width:0}.profile-actions .google-btn{grid-column:auto}.tabs{grid-template-columns:repeat(2,1fr)}}
   .thumb.has-image img{width:100%;height:100%;object-fit:cover;display:block}.thumb.has-image::before,.thumb.has-image::after{display:none}.image-picker{display:grid;gap:8px}.image-drop{margin:0;width:100%;display:grid;place-items:center;gap:10px;min-height:110px;font:inherit}.image-drop img{display:block;width:100%;height:150px;object-fit:contain}.image-drop img[hidden]{display:none}.image-drop:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.project-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:2}.project[data-play-state=playing] .project-thumbnail{display:none}*{scrollbar-width:thin;scrollbar-color:#73737a #202023}.image-picker .helper{min-height:2.4em}
+
+  /* Owner project management: deliberately scoped to the existing profile and modal. */
+  .profile-project{border:1px solid #3e3e43;background:#29292d;border-radius:14px;padding:12px;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+  .profile-project:hover{border-color:#68686f;background:#303035}
+  .profile-project:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .profile-project-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+  .profile-project-actions h3{flex:1 1 135px;min-width:0;overflow-wrap:anywhere;margin-right:auto}
+  .profile-project-actions button{flex:0 0 auto;min-height:34px}
+  .profile-project .thumb{min-width:0}
+  #projectEditModal .modal{width:min(580px,100%)}
+  #projectEditModal .field input,#projectEditModal .field textarea,#projectEditModal .field select{width:100%;min-width:0}
+  .project-edit-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .project-edit-actions .publish{margin:0;width:auto;min-width:150px;padding:0 20px}
+  .project-edit-actions .mini-btn{padding:0 18px}
+  @media(max-width:600px){.profile-project-actions h3{flex-basis:100%}.project-edit-actions .publish{flex:1}}
+
 </style>
 <meta content="RapidFire — discover, play, publish and follow interactive web projects." name="description"/></head>
 <body>
@@ -404,6 +420,29 @@
 
 
 <div class="sync-indicator" id="syncIndicator">Starting RapidFire…</div>
+
+<div aria-hidden="true" class="modal-backdrop" id="projectEditModal">
+  <div aria-labelledby="projectEditTitle" aria-modal="true" class="modal" role="dialog">
+    <div class="modal-head"><h2 id="projectEditTitle">Edit project</h2><button aria-label="Close project editor" class="close" id="closeProjectEdit" type="button">×</button></div>
+    <div class="publish-grid">
+      <div class="field"><label for="editProjectName">Project name</label><input id="editProjectName" maxlength="120" autocomplete="off"/></div>
+      <div class="field"><label for="editProjectCategory">Category</label><select id="editProjectCategory"><option>Game</option><option>Tool</option><option>Education</option><option>Art</option><option>Experiment</option><option>Other</option></select></div>
+      <div class="field full"><label for="editProjectDescription">Description</label><textarea id="editProjectDescription" maxlength="2000"></textarea></div>
+      <div class="field full"><label for="editProjectTags">Tags (comma separated)</label><input id="editProjectTags" maxlength="320" placeholder="arcade, puzzle, web"/></div>
+      <div class="field full">
+        <div class="image-picker"><span>Project thumbnail</span><input type="file" id="editThumbFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/>
+          <button class="dropzone image-drop" id="editThumbDrop" type="button" aria-describedby="editThumbStatus"><img id="editThumbPreview" hidden alt="Project thumbnail preview"/><span>Replace thumbnail image</span></button>
+          <div class="helper" id="editThumbStatus" role="status" aria-live="polite"></div>
+          <button id="editThumbRemove" type="button" class="mini-btn" hidden>Remove thumbnail</button>
+        </div>
+      </div>
+      <div class="field full" id="editProjectEmbedGroup" hidden><label for="editProjectEmbed">Embed URL</label><input id="editProjectEmbed" inputmode="url" placeholder="https://example.com/my-project"/><div class="helper">The new URL must be HTTP(S) and permit iframe embedding.</div></div>
+      <div class="field full" id="editProjectHTMLGroup" hidden><label for="editProjectHTML">Replace HTML source (optional)</label><input id="editProjectHTML" type="file" accept=".html,.htm,text/html"/><div class="helper">Leave blank to keep the current HTML source. Changing metadata does not require re-uploading.</div></div>
+    </div>
+    <div class="project-edit-actions"><button class="mini-btn" id="cancelProjectEdit" type="button">Cancel</button><button class="publish" id="saveProjectEdit" type="button">Save changes</button></div>
+  </div>
+</div>
+
 <div aria-hidden="true" class="modal-backdrop" id="profileEditModal"><div aria-labelledby="profileEditTitle" aria-modal="true" class="modal" role="dialog"><div class="modal-head"><h2 id="profileEditTitle">Edit profile</h2><button aria-label="Close" class="close" id="closeProfileEdit">×</button></div><div class="profile-edit-grid"><label>Display name<input id="editDisplayName" maxlength="50"/></label><label>Handle<input autocapitalize="off" id="editHandle" maxlength="28" spellcheck="false"/></label><label>Bio<textarea id="editBio" maxlength="180"></textarea></label><div class="image-picker"><span>Profile photo</span><input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/><button class="dropzone image-drop" id="avatarDrop" type="button" aria-describedby="avatarStatus"><img id="avatarPreview" hidden alt="Profile photo preview"/><span>Drop an image or click to choose</span></button><div class="helper" id="avatarStatus" role="status" aria-live="polite"></div><button id="avatarRemove" type="button" class="mini-btn" hidden>Remove selected image</button></div><label>Avatar URL<input id="editAvatarUrl" inputmode="url" placeholder="https://…"/></label></div><button class="publish" id="saveProfileEdit">Save profile</button></div></div>
 
 <div aria-hidden="true" class="modal-backdrop comments-modal" id="commentsModal">
@@ -845,7 +884,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
       views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
       thumbnailUrl:String(raw.thumbnailUrl||''),type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
-      source:String(raw.source||''),sourceElementId:String(raw.sourceElementId||''),contentUrl:String(raw.contentUrl||''),storagePath:String(raw.storagePath||''),embedUrl:String(raw.embedUrl||''),
+      source:String(raw.source||''),sourceElementId:String(raw.sourceElementId||''),contentUrl:String(raw.contentUrl||''),storagePath:String(raw.storagePath||''),sourceVersion:String(raw.sourceVersion||(String(raw.contentUrl||'').startsWith('firestore:')?String(raw.contentUrl).split(':')[2]||'':'')),embedUrl:String(raw.embedUrl||''),
       createdAt:raw.createdAt?.toMillis?raw.createdAt.toMillis():Number(raw.createdAt||Date.now())
     };
   }
@@ -1175,7 +1214,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     ...storedProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:'neon',sourceType:p.type,localId:p.id}))
   ];
   function upsertSearchItem(project){
-    const idx=items.findIndex(i=>i.localId===project.id || (i.title===project.title && i.creator===project.creator));
+    const idx=items.findIndex(i=>(i.projectId||i.localId)===project.id || (!(i.projectId||i.localId)&&i.title===project.title&&i.creator===project.creator));
     const item={isDefault:project.isDefault,originalCreator:project.originalCreator,sourceUrl:project.sourceUrl,license:project.license,licenseUrl:project.licenseUrl,projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
     idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
   }
@@ -1428,7 +1467,24 @@ async function createFirebaseService(firebaseConfig, options={}){
     if(tab==='projects'){
       let mine=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId));mine=[...new Map(mine.map(p=>[p.projectId||p.localId,p])).values()].sort((a,b)=>profileSortNewest?(b.createdAt||0)-(a.createdAt||0):(a.createdAt||0)-(b.createdAt||0));
       profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project">${renderThumbnail(p)}<div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
-      $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
+      $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
+
+      $('.profile-project',profilePanel).forEach((card,index)=>{
+        const entry=mine[index],id=String(entry?.projectId||entry?.localId||''),project=projectById(id);
+        if(!project||!id)return;
+        card.tabIndex=0;card.setAttribute('role','link');card.setAttribute('aria-label','Open '+project.title);
+        const actions=$('.profile-project-actions',card);
+        if(actions){
+          const open=document.createElement('button');open.type='button';open.className='mini-btn';open.textContent='Open';open.setAttribute('aria-label','Open '+project.title);
+          open.addEventListener('click',()=>openProjectById(id));actions.append(open);
+          if(canEditOwnedProject(project)){
+            const edit=document.createElement('button');edit.type='button';edit.className='mini-btn';edit.textContent='Edit';edit.setAttribute('aria-label','Edit '+project.title);
+            edit.addEventListener('click',()=>openOwnedProjectEditor(id));actions.append(edit);
+          }
+        }
+        card.addEventListener('click',e=>{if(!e.target.closest('button,a,input,select,textarea'))openProjectById(id);});
+        card.addEventListener('keydown',e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openProjectById(id);}});
+      });
     }else if(tab==='posts'){
       profilePanel.innerHTML=`<div class="panel-head"><h2>Posts</h2>${isOwn?`<button class="sort-btn" id="newPostBtn">${postComposerOpen?'Cancel':'New post'}</button>`:''}</div>${isOwn&&postComposerOpen?'<div class="field"><label for="postText">Post to your followers</label><textarea id="postText" maxlength="280" placeholder="Share an update…"></textarea><button class="publish" id="postBtn">Post</button></div>':''}<div class="post-list">${profilePosts.length?profilePosts.map(p=>`<div class="post-card"><div class="post-head"><small>${escapeHTML(formatTime(p.createdAt))}</small>${isOwn?`<button class="danger-btn" data-delete-post="${escapeHTML(p.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.text)}</p></div>`).join(''):'<div class="empty-compact">No posts yet.</div>'}</div>`;
       $('#newPostBtn')?.addEventListener('click',()=>{postComposerOpen=!postComposerOpen;renderProfileTab('posts');});$('#postBtn')?.addEventListener('click',createPost);$$('[data-delete-post]',profilePanel).forEach(b=>b.addEventListener('click',()=>deletePost(b.dataset.deletePost)));
@@ -1479,8 +1535,19 @@ async function createFirebaseService(firebaseConfig, options={}){
   }
   async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){reportCloudError('Post publish',err,{toastUser:true});}}
   async function deletePost(id){if(!currentUser||!cloud)return;if(!await confirmAction('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){reportCloudError('Post delete',err,{toastUser:true});}}
-  async function deleteOwnedProject(id){const p=projectRegistry.get(id);if(!p||p.ownerUserId!==currentUser?.id||p.sourceType==='builtin')return;if(!await confirmAction(`Delete "${p.title}"?`))return;try{if(p.remote&&cloud)await cloud.deleteProject(p);else await removeLocalProject(id,{skipConfirm:true});removeProjectFromUI(id);showToast('Project deleted');}catch(err){showToast(err?.message||'Could not delete project');}}
-  function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);const ix=items.findIndex(i=>(i.projectId||i.localId)===id);if(ix>=0)items.splice(ix,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
+  async function deleteOwnedProject(id){
+    const project=projectById(id);
+    if(!canEditOwnedProject(project)){showToast('You cannot delete this project');return;}
+    if(!await confirmAction('Permanently delete "'+project.title+'"? This removes the published project and its uploaded source for everyone. This cannot be undone.'))return;
+    if(!canEditOwnedProject(project))return;
+    if(project.remote&&!cloud){showToast('Reconnect to Firebase before deleting this project');return;}
+    try{
+      if(project.remote)await cloud.deleteProject(project);
+      else if(!await removeLocalProject(id,{skipConfirm:true}))throw new Error('Could not remove the local project');
+      removeProjectFromUI(id);showToast('Project deleted');
+    }catch(err){console.warn('Project delete failed',err);showToast(err?.message||'Could not delete project');}
+  }
+  function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){if(activeProject===article)setProjectPlaying(article,false);socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);for(let i=items.length-1;i>=0;i--)if((items[i].projectId||items[i].localId)===id)items.splice(i,1);const storedIndex=storedProjects.findIndex(p=>p.id===id);if(storedIndex>=0)storedProjects.splice(storedIndex,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
 
   function imagePicker(prefix){
     const zone=$(`#${prefix}Drop`),input=$(`#${prefix}File`),preview=$(`#${prefix}Preview`),status=$(`#${prefix}Status`),remove=$(`#${prefix}Remove`);
@@ -1515,12 +1582,105 @@ async function createFirebaseService(firebaseConfig, options={}){
     reset();return {reset,data:()=>data,pending:()=>pending};
   }
   const avatarPicker=imagePicker('avatar'),thumbnailPicker=imagePicker('thumbnail');
+
+  // ---------- edit existing published projects (owner only) ----------
+  const projectEditor=$('#projectEditModal');
+  const editThumbPicker=imagePicker('editThumb');
+  let editingProjectId=null,editThumbnailRemoved=false;
+  function canEditOwnedProject(project){
+    return !!project && !!currentUser && project.ownerUserId===currentUser.id
+      && can('manageOwnProjects') && !project.isDefault && project.sourceType!=='builtin'
+      && (project.remote||project.local);
+  }
+  function closeOwnedProjectEditor(){
+    projectEditor.classList.remove('open');
+    projectEditor.setAttribute('aria-hidden','true');
+    editingProjectId=null;
+    $('#editProjectHTML').value='';
+  }
+  function openOwnedProjectEditor(projectId){
+    const project=projectById(String(projectId));
+    if(!canEditOwnedProject(project)){showToast('Only the project owner can edit it');return;}
+    editingProjectId=project.id;editThumbnailRemoved=false;
+    $('#editProjectName').value=project.title;
+    $('#editProjectDescription').value=project.desc;
+    $('#editProjectTags').value=project.tags.join(', ');
+    const category=$('#editProjectCategory');
+    if(!Array.from(category.options).some(option=>option.value===project.category)){
+      const option=document.createElement('option');option.value=project.category;option.textContent=project.category;category.append(option);
+    }
+    category.value=project.category;
+    $('#editProjectEmbedGroup').hidden=project.sourceType!=='embed';
+    $('#editProjectHTMLGroup').hidden=!['html','local'].includes(project.sourceType);
+    $('#editProjectEmbed').value=project.embedUrl||'';
+    $('#editProjectHTML').value='';
+    editThumbPicker.reset(project.thumbnailUrl||'');
+    projectEditor.classList.add('open');projectEditor.setAttribute('aria-hidden','false');
+    $('#editProjectName').focus({preventScroll:true});
+  }
+  async function saveOwnedProjectEditor(){
+    const project=projectById(editingProjectId),button=$('#saveProjectEdit');
+    if(!canEditOwnedProject(project)){showToast('Only the project owner can edit it');closeOwnedProjectEditor();return;}
+    if(button.disabled)return;
+    if(editThumbPicker.pending())return showToast('The thumbnail is still preparing');
+    const title=$('#editProjectName').value.trim();
+    if(!title)return showToast('Enter a project name');
+    const desc=$('#editProjectDescription').value.trim();
+    const tags=$('#editProjectTags').value.split(',').map(tag=>tag.trim().replace(/^#/, '')).filter(Boolean).slice(0,8);
+    let embedUrl=project.embedUrl;
+    if(project.sourceType==='embed'){
+      embedUrl=normalizeEmbedUrl($('#editProjectEmbed').value);
+      if(!embedUrl)return showToast('Enter a valid HTTP(S) embed URL');
+    }
+    const selected=$('#editProjectHTML').files[0];
+    let updatedSource=null;
+    if(selected&&['html','local'].includes(project.sourceType)){
+      if(!(/\.html?$/i.test(selected.name)||selected.type==='text/html'))return showToast('Select an HTML file to replace the source');
+      try{updatedSource=await fileToText(selected);}catch(_){return showToast('Could not read the replacement HTML');}
+      if(!updatedSource.trim())return showToast('The replacement HTML file is empty');
+    }
+    if(project.remote&&!cloud)return showToast('Reconnect to Firebase to save changes');
+    if(!canEditOwnedProject(project))return;
+    const image=editThumbPicker.data();
+    const edited=normalizeProject({...project,title,desc,tags,category:$('#editProjectCategory').value,embedUrl,thumbnailUrl:image||(editThumbnailRemoved?'':project.thumbnailUrl)});
+    if(updatedSource!==null&&!project.remote)edited.source=updatedSource;
+    button.disabled=true;button.textContent='Saving…';
+    try{
+      let saved=edited;
+      if(project.remote){
+        const payload=await cloud.upsertProject(edited,updatedSource!==null&&project.sourceType==='html'?{html:updatedSource}:{});
+        saved=normalizeProject({...edited,...payload});
+      }else{
+        const localProjects=safeStore.get('rapidfire.local.projects.v2',[]);
+        const i=localProjects.findIndex(p=>String(p.id)===edited.id);
+        if(i<0)throw new Error('The local project could not be located');
+        localProjects[i]={...localProjects[i],...edited};
+        if(!safeStore.set('rapidfire.local.projects.v2',localProjects))throw new Error('Local storage is unavailable');
+        const old=storedProjects.findIndex(p=>p.id===edited.id);if(old>=0)storedProjects[old]=edited;
+      }
+      upsertSearchItem(saved);mountProject(saved);renderSearch($('#searchInput')?.value||'');
+      closeOwnedProjectEditor();renderProfile();showToast('Project changes saved');
+    }catch(err){console.warn('Project edit failed',err);showToast(err?.message||'Could not save project');}
+    finally{button.disabled=false;button.textContent='Save changes';}
+  }
+  $('#closeProjectEdit').addEventListener('click',closeOwnedProjectEditor);
+  $('#cancelProjectEdit').addEventListener('click',closeOwnedProjectEditor);
+  $('#saveProjectEdit').addEventListener('click',saveOwnedProjectEditor);
+  $('#editThumbRemove').addEventListener('click',()=>{editThumbnailRemoved=true;});
+  projectEditor.addEventListener('click',event=>{if(event.target===projectEditor)closeOwnedProjectEditor();});
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&projectEditor.classList.contains('open')&&!$('#confirmDialog').open){
+      event.preventDefault();closeOwnedProjectEditor();
+    }
+  });
+
   function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;avatarPicker.reset(user.avatarUrl);const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
   function closeProfileEditor(){const m=$('#profileEditModal');m.classList.remove('open');m.setAttribute('aria-hidden','true');}
   async function saveProfileEditor(){if(!currentUser||!cloud||$('#saveProfileEdit').disabled)return;if(avatarPicker.pending())return showToast('Your photo is still preparing. Try Save again in a moment.');const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});refreshCreatorIdentities();closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
   $('#closeProfileEdit').addEventListener('click',closeProfileEditor);$('#profileEditModal').addEventListener('click',e=>{if(e.target.id==='profileEditModal')closeProfileEditor();});$('#saveProfileEdit').addEventListener('click',saveProfileEditor);
   $('#profileTabs').addEventListener('click',e=>{const b=e.target.closest('[data-profile-tab]');if(b&&!b.hidden)renderProfileTab(b.dataset.profileTab);});
 
+  let lastPublishedCloudProjectIds=new Set();
   async function bootstrapFirebase(){
     const indicator=$('#syncIndicator');
     const isWebProtocol = location.protocol === 'https:' || location.protocol === 'http:';
@@ -1535,7 +1695,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});
       indicator.textContent='Firebase connected';indicator.classList.remove('error');indicator.classList.add('online');
       cloud.subscribeProfiles(users=>{users.forEach(registerUser);refreshCreatorIdentities();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
-      cloud.subscribeProjects(projects=>{for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?(builtInProjects.some(b=>b.id===raw.id&&b.ownerUserId===raw.ownerUserId&&b.contentUrl===raw.contentUrl)?'builtin':'remote'):'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(['contentUrl','embedUrl','sourceType','thumbnailUrl','title','desc','ownerUserId'].some(key=>existing[key]!==p[key]))mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      cloud.subscribeProjects(projects=>{const liveIds=new Set(projects.filter(p=>!String(p.id).startsWith('default-')).map(p=>String(p.id)));for(const oldId of lastPublishedCloudProjectIds){if(!liveIds.has(oldId))removeProjectFromUI(oldId);}lastPublishedCloudProjectIds=liveIds;for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?(builtInProjects.some(b=>b.id===raw.id&&b.ownerUserId===raw.ownerUserId&&b.contentUrl===raw.contentUrl)?'builtin':'remote'):'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(['contentUrl','embedUrl','sourceType','thumbnailUrl','title','desc','category','ownerUserId'].some(key=>existing[key]!==p[key])||existing.tags.join('|')!==p.tags.join('|'))mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
       let authGeneration=0;
       cloud.onAuth(async fb=>{
         const generation=++authGeneration;
