@@ -1,0 +1,1779 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
+<title>RapidFire</title>
+<style>
+  :root{
+    --bg:#1d1d1f;
+    --panel:#272729;
+    --panel2:#333336;
+    --line:#454549;
+    --text:#f7f7f8;
+    --muted:#b8b8bd;
+    --accent:#ff9f2f;
+    --accent2:#ff5c4d;
+    --good:#6be6a7;
+    --nav-h:78px;
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+  button,input,textarea,select{font:inherit}
+  button{color:inherit}
+  .app{height:100dvh;display:grid;grid-template-rows:1fr var(--nav-h);background:var(--bg)}
+  .view{min-height:0;position:relative;overflow:hidden}
+  .screen{position:absolute;inset:0;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .18s ease,transform .18s ease}
+  .screen.active{opacity:1;pointer-events:auto;transform:none}
+
+  /* bottom navigation */
+  .nav{height:var(--nav-h);display:grid;grid-template-columns:repeat(4,1fr);background:#242426;border-top:1px solid #38383b;z-index:20}
+  .nav button{appearance:none;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;position:relative}
+  .nav button:hover{background:#2c2c2f}
+  .nav button.active::after{content:"";position:absolute;bottom:7px;width:34px;height:3px;border-radius:999px;background:var(--accent)}
+  .nav svg{width:31px;height:31px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .nav .add svg{width:42px;height:42px;color:var(--accent);stroke-width:2.5}
+  .nav .profile-dot{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--accent2)}
+  .nav .profile-dot svg{width:23px;height:23px}
+
+  /* home */
+  .feed{height:100%;overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;background:#121214}
+  .feed::-webkit-scrollbar{display:none}
+  .project{height:100%;scroll-snap-align:start;scroll-snap-stop:always;display:grid;grid-template-rows:94px 1fr;position:relative;background:#151518}
+  .creator-bar{display:flex;align-items:center;gap:12px;padding:14px 22px;background:#2b2b2e;border-bottom:1px solid #3a3a3d;z-index:3}
+  .brand-tile{width:56px;height:56px;display:block;flex:none;overflow:hidden;background:#ffaa4d;border:1px solid rgba(0,0,0,.16)}
+  .brand-tile img{width:100%;height:100%;display:block;object-fit:cover}
+  .avatar{width:48px;height:48px;border-radius:50%;background:var(--accent2);display:grid;place-items:center;flex:none}
+  .avatar svg{width:30px;height:30px;fill:#fff}
+  .creator-copy{min-width:0;display:grid;gap:2px}
+  .creator-row{display:flex;align-items:center;gap:10px;min-width:0}
+  .creator-name{font-weight:750;white-space:nowrap}
+  .creator-role{font-size:10px;line-height:1;padding:4px 7px;border-radius:999px;background:#422c17;color:#ffc47a;border:1px solid #62421f;font-weight:850;white-space:nowrap}
+  .project-title{font-size:15px;color:#dddde1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .follow-btn{border:1px solid #56565b;background:#fff;color:#171719;font-size:13px;font-weight:800;border-radius:8px;padding:6px 11px;cursor:pointer}
+  .follow-btn.following{background:#3c3c40;color:#fff}
+  .follow-btn:disabled{opacity:.62;cursor:default;filter:none}
+  .tag-row{display:flex;gap:5px;align-items:center;overflow:hidden;white-space:nowrap;margin-top:2px}
+  .tag{font-size:10px;line-height:1;padding:4px 7px;border-radius:999px;background:#3a3a3e;color:#d8d8dd;border:1px solid #47474c}
+  .tag.accent{background:#422c17;color:#ffc47a;border-color:#62421f}
+
+  .playfield{position:relative;min-height:0;overflow:hidden;background:#17171b}
+  .dash-canvas{width:100%;height:100%;display:block;background:#26114d;touch-action:none}
+  .local-runner-field iframe{width:100%;height:100%;border:0;background:#fff;display:block}
+  .project-content{position:absolute;inset:0;overflow:hidden;transition:filter .18s ease,transform .18s ease,opacity .18s ease}
+  .project[data-play-state="gated"] .project-content{filter:blur(12px) brightness(.58);transform:scale(1.025);pointer-events:none}
+  .project[data-play-state="playing"] .project-content{filter:none;transform:none;pointer-events:auto}
+  .play-gate{position:absolute;inset:0;z-index:3;border:0;background:rgba(9,9,12,.28);display:grid;place-items:center;cursor:pointer;padding:20px;backdrop-filter:blur(2px);transition:opacity .16s ease,visibility .16s ease;touch-action:pan-y}
+  .project[data-play-state="playing"] .play-gate{opacity:0;visibility:hidden;pointer-events:none}
+  .play-gate-pill{display:grid;place-items:center;gap:5px;min-width:148px;padding:15px 20px;border-radius:18px;background:rgba(18,18,22,.88);border:1px solid rgba(255,255,255,.16);box-shadow:0 14px 42px rgba(0,0,0,.30)}
+  .play-gate-icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#171719;font-size:20px;font-weight:1000;padding-left:2px}
+  .play-gate-pill strong{font-size:17px}.play-gate-pill small{font-size:11px;color:#aaaab0;font-weight:600}
+  .leave-play{position:absolute;left:14px;top:14px;z-index:4;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(18,18,22,.76);backdrop-filter:blur(10px);padding:7px 10px;cursor:pointer;font-size:11px;font-weight:800;opacity:0;visibility:hidden;pointer-events:none;transition:.14s ease}
+  .project[data-play-state="playing"] .leave-play{opacity:1;visibility:visible;pointer-events:auto}
+  .local-placeholder{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:28px;background:radial-gradient(circle at 50% 42%,#3b2d22 0,#1d1d20 48%,#151518 100%);color:#fff;transition:opacity .12s ease}
+  .local-placeholder-mark{width:78px;height:78px;margin:0 auto 14px;overflow:hidden;background:#ffaa4d;border:1px solid rgba(255,255,255,.10);box-shadow:0 12px 34px rgba(0,0,0,.24)}
+  .local-placeholder-mark img{width:100%;height:100%;display:block;object-fit:cover}
+  .local-placeholder h3{margin:0 0 6px;font-size:24px}.local-placeholder p{margin:0;color:#bdbdc2;font-size:13px}
+  .local-runner-field iframe{opacity:0;transition:opacity .12s ease}
+  .local-runner-field.is-loaded iframe{opacity:1}
+  .local-runner-field.is-loaded .local-placeholder{opacity:0;pointer-events:none}
+  .project[data-play-state="gated"] .orbit{animation-play-state:paused!important}
+  .game-hud{position:absolute;left:22px;bottom:18px;display:flex;align-items:center;gap:10px;background:rgba(15,15,18,.72);border:1px solid rgba(255,255,255,.11);padding:9px 12px;border-radius:14px;backdrop-filter:blur(10px);font-size:13px}
+  .game-hud strong{color:#fff}.game-hud span{color:#c9c9ce}
+  .rail{position:absolute;right:18px;bottom:20px;display:grid;gap:11px;z-index:4}
+  .rail-btn{border:0;background:rgba(26,26,29,.76);backdrop-filter:blur(10px);width:52px;min-height:52px;border-radius:16px;display:grid;place-items:center;gap:2px;padding:7px 4px;cursor:pointer;border:1px solid rgba(255,255,255,.1)}
+  .rail-btn:hover{background:#343438}
+  .rail-btn svg{width:26px;height:26px;fill:none;stroke:#fff;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+  .rail-btn .count{font-size:10px;color:#d7d7dc;line-height:1}
+  .rail-btn.liked svg{fill:#ff4f68;stroke:#ff4f68}
+  .rail-btn.saved svg{fill:#fff}
+  .next-hint{position:absolute;right:86px;top:48%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.12);background:rgba(22,22,26,.64);display:grid;place-items:center;animation:pulse 1.8s ease-in-out infinite;pointer-events:none}
+  @keyframes pulse{50%{transform:translateY(-50%) scale(1.06);opacity:.78}}
+  .next-hint svg{width:25px;height:25px;stroke:#fff;fill:none;stroke-width:2.5}
+  .info-sheet{position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:45;display:flex;align-items:flex-end;justify-content:center;padding:16px;opacity:0;visibility:hidden;pointer-events:none;transition:.16s ease}
+  .info-sheet.open{opacity:1;visibility:visible;pointer-events:auto}
+  .info-card{width:min(720px,100%);background:#202023;border:1px solid #45454a;border-radius:20px;padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.38)}
+  .info-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.info-head h2{margin:0;font-size:22px}.info-card p{color:#d0d0d5;line-height:1.5;margin:10px 0 14px}.info-meta{font-size:12px;color:#a9a9af;margin-top:10px}
+
+  .science-card,.rizz-card{height:100%;display:grid;place-items:center;position:relative;overflow:hidden}
+  .science-card{background:#12202a}
+  .science-stage{width:min(78vw,760px);aspect-ratio:16/9;border:1px solid #35505f;border-radius:24px;background:#172a36;position:relative;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.22)}
+  .orbit-center{position:absolute;left:50%;top:50%;width:70px;height:70px;border-radius:50%;background:#ffbd3c;transform:translate(-50%,-50%);box-shadow:0 0 38px rgba(255,189,60,.44)}
+  .orbit{position:absolute;left:50%;top:50%;border:1px solid rgba(150,219,255,.28);border-radius:50%;transform:translate(-50%,-50%)}
+  .orbit.o1{width:230px;height:120px;animation:spin 6s linear infinite}
+  .orbit.o2{width:390px;height:210px;animation:spin 10s linear infinite reverse}
+  .planet{width:22px;height:22px;border-radius:50%;background:#78d7ff;position:absolute;left:50%;top:-11px;transform:translateX(-50%);box-shadow:0 0 22px rgba(120,215,255,.55)}
+  .o2 .planet{background:#ff7676;width:28px;height:28px;top:calc(50% - 14px);left:-14px}
+  @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+  .science-controls{position:absolute;left:24px;top:24px;background:rgba(8,13,17,.68);border:1px solid rgba(255,255,255,.08);padding:12px 14px;border-radius:14px;color:#dbe9f0;font-size:13px}
+  .science-controls input{vertical-align:middle}
+
+  .rizz-card{background:#241b16}
+  .meter-wrap{width:min(78vw,680px);display:grid;gap:20px;text-align:center}
+  .meter-face{font-size:110px;line-height:1;filter:drop-shadow(0 18px 24px rgba(0,0,0,.28));transition:transform .2s ease}
+  .meter-track{height:22px;background:#3a2f29;border-radius:999px;overflow:hidden;border:1px solid #58463d}
+  .meter-fill{height:100%;width:67%;background:var(--accent);border-radius:inherit;transition:width .2s ease}
+  .meter-score{font-weight:900;font-size:24px}
+  .meter-btn{justify-self:center;border:0;border-radius:12px;background:#fff;color:#111;padding:11px 18px;font-weight:850;cursor:pointer}
+  .meter-sub{font-size:12px;color:#bfb4ad;margin-top:-10px}
+
+  /* richer built-in projects */
+  .project-app{height:100%;display:grid;place-items:center;padding:clamp(14px,3vw,34px);position:relative;overflow:hidden}
+  .project-shell{width:min(760px,88vw);border:1px solid rgba(255,255,255,.12);border-radius:24px;background:rgba(18,18,22,.78);box-shadow:0 24px 80px rgba(0,0,0,.28);padding:clamp(16px,3vw,28px);backdrop-filter:blur(12px)}
+  .project-kicker{font-size:11px;font-weight:900;letter-spacing:.11em;text-transform:uppercase;color:#aaaab1}
+  .project-shell h2{margin:5px 0 4px;font-size:clamp(24px,4vw,38px);line-height:1.02}
+  .project-shell p{margin:0;color:#bdbdc4;line-height:1.4}
+  .mini-stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .mini-stat{padding:7px 10px;border-radius:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.09);font-size:12px;color:#dedee3}
+  .project-action{border:0;border-radius:13px;background:#fff;color:#141417;padding:11px 16px;font-weight:900;cursor:pointer}
+  .project-action.secondary{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.12)}
+  .project-action:active{transform:translateY(1px)}
+
+  .pulse-card{background:radial-gradient(circle at 50% 35%,#35205f 0,#151020 56%,#0c0b12 100%)}
+  .pulse-stage{display:grid;place-items:center;gap:18px;text-align:center;margin-top:18px}
+  .pulse-orb{width:clamp(122px,24vw,190px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;background:#b15cff;box-shadow:0 0 0 0 rgba(177,92,255,.5),0 22px 60px rgba(0,0,0,.3);font-size:34px;font-weight:1000;user-select:none;transition:transform .08s linear,box-shadow .08s linear,background .12s ease}
+  .pulse-orb.hit{background:#7ef2b0}.pulse-orb.miss{background:#ff6a6a}
+  .pulse-feedback{font-weight:900;min-height:24px}
+  .pulse-tap{width:min(340px,80%);height:52px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.09);color:#fff;font-weight:900;cursor:pointer}
+
+  .reflex-card{background:linear-gradient(145deg,#102229,#16171d 54%,#261415)}
+  .reflex-stage{display:grid;place-items:center;gap:16px;text-align:center;margin-top:18px}
+  .reflex-pad{width:min(420px,78vw);height:clamp(170px,30vh,260px);border:1px solid rgba(255,255,255,.14);border-radius:24px;background:#3b3131;color:#fff;display:grid;place-items:center;font-weight:1000;font-size:clamp(25px,5vw,42px);cursor:pointer;user-select:none;transition:background .12s ease,transform .08s ease}
+  .reflex-pad.waiting{background:#43301e}.reflex-pad.ready{background:#17653c;box-shadow:0 0 60px rgba(45,240,139,.2)}.reflex-pad:active{transform:scale(.99)}
+
+  .color-card{background:radial-gradient(circle at 20% 20%,#31244d 0,#171921 47%,#101114 100%)}
+  .color-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px;margin-top:18px;align-items:stretch}
+  .palette{display:grid;grid-template-columns:repeat(5,1fr);min-height:220px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.12)}
+  .swatch{position:relative;cursor:pointer;border:0;min-width:0}
+  .swatch span{position:absolute;left:8px;bottom:8px;font-size:10px;font-weight:900;padding:5px 7px;border-radius:8px;background:rgba(0,0,0,.46);color:#fff;backdrop-filter:blur(6px)}
+  .color-controls{display:grid;gap:10px;align-content:center}
+  .color-controls label{display:grid;gap:5px;font-size:11px;color:#bcbcc3;font-weight:800}
+  .color-controls input{width:100%}
+  .color-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+  .memory-card{background:radial-gradient(circle at 50% 35%,#123d3a 0,#122120 54%,#0e1212 100%)}
+  .memory-wrap{display:grid;grid-template-columns:minmax(230px,420px) 1fr;gap:22px;margin-top:18px;align-items:center}
+  .memory-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;aspect-ratio:1}
+  .memory-cell{border:1px solid rgba(255,255,255,.1);border-radius:14px;background:#1f5f58;cursor:pointer;transition:filter .1s ease,transform .1s ease,background .1s ease}
+  .memory-cell:nth-child(3n+2){background:#73522a}.memory-cell:nth-child(3n){background:#63335b}
+  .memory-cell.flash{filter:brightness(2.1);transform:scale(.95)}
+  .memory-copy{display:grid;gap:10px}
+
+  .math-card{background:radial-gradient(circle at 50% 20%,#233e66 0,#172130 52%,#0e1218 100%)}
+  .math-stage{display:grid;gap:16px;margin-top:18px}
+  .math-question{font-size:clamp(42px,8vw,76px);font-weight:1000;letter-spacing:-.04em;text-align:center;padding:16px 10px}
+  .math-answers{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+  .math-answer{height:58px;border-radius:14px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.08);color:#fff;font-size:19px;font-weight:900;cursor:pointer}
+  .math-answer.correct{background:#17653c}.math-answer.wrong{background:#742e32}
+
+  .science-readout{position:absolute;right:20px;bottom:18px;display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;max-width:60%}
+  .science-chip{font-size:10px;font-weight:800;padding:6px 8px;border-radius:9px;background:rgba(6,10,13,.68);border:1px solid rgba(255,255,255,.09);color:#d9edf5}
+  .science-controls{display:grid;gap:7px;min-width:185px}
+  .science-controls label{display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .science-controls button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:#fff;border-radius:8px;padding:6px 8px;cursor:pointer}
+
+  .profile-project-actions,.post-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .danger-btn{border:1px solid #704247;background:#41272a;color:#ffb3b9;border-radius:9px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:800}
+  .danger-btn:hover{background:#512b30}
+  .empty-compact{padding:30px 16px;text-align:center;color:#9d9da4}
+
+  .thumb.pulse{background:#20133b}.thumb.pulse::before{width:54px;height:54px;border-radius:50%;background:#b15cff;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 16px rgba(177,92,255,.14)}
+  .thumb.pulse::after{width:80%;height:2px;left:10%;top:50%;background:#f3d9ff}
+  .thumb.reflex{background:#172c2c}.thumb.reflex::before{width:70%;height:58%;left:15%;top:21%;background:#17653c;border-radius:12px}
+  .thumb.reflex::after{width:34%;height:8px;left:33%;top:46%;background:#bfffdc;border-radius:99px}
+  .thumb.color{background:linear-gradient(90deg,#ff6a6a 0 20%,#ffbd4a 20% 40%,#77df91 40% 60%,#4eb9ff 60% 80%,#ae71ff 80%)}
+  .thumb.memory{background:#102b29}.thumb.memory::before{inset:17%;background:linear-gradient(90deg,#1f5f58 0 30%,transparent 30% 35%,#73522a 35% 65%,transparent 65% 70%,#63335b 70%);border-radius:10px}
+  .thumb.memory::after{inset:17%;border-top:5px solid #0f1717;border-bottom:5px solid #0f1717}
+  .thumb.math{background:#15263e}.thumb.math::before{content:"7 × 8";left:50%;top:50%;transform:translate(-50%,-50%);font-size:25px;font-weight:1000;color:#dcebff;white-space:nowrap}.thumb.math::after{display:none}
+
+  /* search */
+  .search-screen{height:100%;padding:18px;background:#2e2e31;display:grid;grid-template-rows:auto 1fr;gap:14px;overflow:auto}
+  .searchbox{height:56px;border-radius:18px;background:#1f1f22;border:1px solid #3d3d41;display:flex;align-items:center;padding:0 18px;gap:12px;position:sticky;top:0;z-index:2}
+  .searchbox svg{width:24px;height:24px;stroke:#9b9ba1;fill:none;stroke-width:2}
+  .searchbox input{flex:1;background:transparent;border:0;outline:0;color:#fff;font-size:19px;min-width:0}
+  .searchbox input::placeholder{color:#8f8f95}
+  .search-content{background:#202023;border:1px solid #3b3b3f;border-radius:20px;min-height:0;padding:10px;overflow:auto}
+  .suggestion,.result-card{border:0;width:100%;text-align:left;background:transparent;color:#f5f5f6;cursor:pointer;border-radius:14px}
+  .suggestion{display:flex;align-items:center;gap:12px;padding:12px 14px;font-size:17px}
+  .suggestion:hover{background:#2c2c30}
+  .trend{font-size:16px;color:var(--accent)}
+  .search-section-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 5px;color:#a9a9af;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}
+  .tiny-action{border:0;background:transparent;color:#d1d1d6;cursor:pointer;font-size:12px;text-transform:none;letter-spacing:0;padding:4px 6px;border-radius:7px}.tiny-action:hover{background:#343438}
+  .result-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}.result-tags .tag{font-size:9px;padding:3px 6px}
+  .result-card{display:grid;grid-template-columns:180px 1fr;gap:18px;padding:12px;margin-bottom:8px;border:1px solid transparent}
+  .result-card:hover{background:#2b2b2f;border-color:#444449}
+  .thumb{height:108px;border-radius:14px;background:#34343a;position:relative;overflow:hidden}
+  .thumb::before,.thumb::after{content:"";position:absolute}
+  .thumb.neon{background:#211348}
+  .thumb.neon::before{width:70%;height:12px;background:#45d9ff;left:8%;bottom:23%;box-shadow:90px -36px 0 #45d9ff}
+  .thumb.neon::after{width:24px;height:24px;background:#91f43d;border-radius:50%;left:34%;top:36%;box-shadow:0 0 22px rgba(145,244,61,.55)}
+  .thumb.lab{background:#152935}.thumb.lab::before{width:42px;height:42px;border-radius:50%;background:#ffbd3c;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 44px transparent,0 0 36px rgba(255,189,60,.4)}
+  .thumb.lab::after{width:118px;height:62px;border:1px solid #6bc5ed;border-radius:50%;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-13deg)}
+  .thumb.calc{background:#202a21}.thumb.calc::before{width:70px;height:76px;left:50%;top:50%;transform:translate(-50%,-50%);border:2px solid #9be58c;border-radius:8px;background:linear-gradient(#2f3c31 0 26%,transparent 26%)}
+  .result-info{min-width:0;display:grid;align-content:center;gap:5px}
+  .result-info h3{margin:0;font-size:18px}.result-meta{font-size:13px;color:#b7b7bd}.result-desc{font-size:14px;color:#dfdfe3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .empty{height:100%;display:grid;place-items:center;color:#909097;text-align:center;padding:40px}
+
+  /* profile */
+  .profile-screen{height:100%;overflow:auto;background:#303033;padding:24px clamp(18px,5vw,64px)}
+  .profile-shell{max-width:950px;margin:0 auto;display:grid;gap:18px}
+  .profile-top{display:grid;grid-template-columns:128px 1fr auto;gap:18px;align-items:center}
+  .big-avatar{width:128px;height:128px;border-radius:50%;background:var(--accent2);display:grid;place-items:center}
+  .big-avatar svg{width:76px;height:76px;fill:#fff}
+  .profile-card{background:#202023;border:1px solid #3c3c40;border-radius:18px;padding:18px 22px;min-height:128px;display:grid;align-content:center;gap:2px}
+  .profile-card h1{font-size:31px;margin:0 0 2px}.profile-card p{margin:0;color:#d7d7db;font-size:16px}
+  .google-btn{height:44px;border:1px solid #cfcfd2;background:#fff;color:#26262a;border-radius:8px;padding:0 14px;display:flex;gap:10px;align-items:center;font-weight:700;cursor:pointer;white-space:nowrap}
+  .g-mark{font-weight:1000;font-size:20px;color:#4285f4}
+  .guest-panel{background:#202023;border:1px solid #3c3c40;border-radius:18px;height:260px;display:grid;place-items:center;text-align:center;padding:25px;color:#e6e6e9;font-size:27px}
+  .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.tabs button{border:1px solid #3e3e42;background:#202023;border-radius:12px;padding:13px 8px;cursor:pointer}.tabs button.active{background:#36363a;border-color:#55555b}
+  .projects-panel{background:#202023;border:1px solid #3c3c40;border-radius:18px;padding:18px}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.panel-head h2{margin:0;font-size:27px}.sort-btn{border:1px solid #4b4b50;background:#333337;border-radius:10px;padding:8px 14px;cursor:pointer}
+  .profile-project{display:grid;grid-template-columns:280px 1fr;gap:18px;margin-top:16px}.profile-project .thumb{height:150px}.profile-project h3{margin:4px 0 6px}.profile-project p{margin:4px 0;color:#c7c7cc}
+  .people-list,.post-list{display:grid;gap:8px;margin-top:14px}.person-row,.post-card{display:flex;align-items:center;gap:12px;padding:11px;border:1px solid #3d3d42;background:#29292d;border-radius:13px}.person-row .avatar{width:38px;height:38px}.person-copy{flex:1;min-width:0}.person-copy strong,.person-copy span{display:block}.person-copy span{font-size:12px;color:#aaaab0;margin-top:2px}.mini-btn{border:1px solid #4d4d52;background:#37373b;border-radius:9px;padding:7px 10px;cursor:pointer;font-size:12px}.post-card{display:block}.post-card p{margin:6px 0;color:#d3d3d7;line-height:1.4}.post-card small{color:#929298}
+
+  /* modal + toast */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.58);display:grid;place-items:center;z-index:50;padding:18px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease}
+  .modal-backdrop.open{opacity:1;visibility:visible;pointer-events:auto}
+  .modal{width:min(560px,100%);max-height:calc(100dvh - 36px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;background:#222225;border:1px solid #444449;border-radius:22px;padding:20px;box-shadow:0 28px 90px rgba(0,0,0,.45)}
+  .modal-head{display:flex;justify-content:space-between;align-items:center}.modal-head h2{margin:0}.close{width:36px;height:36px;border-radius:10px;border:1px solid #45454a;background:#2f2f33;cursor:pointer}
+  .dropzone{margin-top:16px;border:1px dashed #57575c;border-radius:16px;padding:22px;text-align:center;color:#bcbcc2;background:#29292d;cursor:pointer;transition:.15s ease}.dropzone strong{color:#fff}.dropzone.dragover{border-color:var(--accent);background:#342b21}.dropzone.loaded{border-style:solid;border-color:#466a57;background:#25342c}
+  .source-divider{display:flex;align-items:center;gap:10px;margin:13px 0 0;color:#85858c;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.source-divider::before,.source-divider::after{content:"";height:1px;background:#3d3d41;flex:1}
+  .embed-url-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.embed-url-row input{min-width:0}.source-action{border:1px solid #525258;background:#353539;color:#fff;border-radius:11px;padding:0 14px;min-height:43px;font-weight:800;cursor:pointer}.source-action:hover{background:#414146}.source-action:active{transform:translateY(1px)}
+  .runner{margin-top:12px;border:1px solid #424247;border-radius:15px;overflow:hidden;background:#111;display:none}.runner.visible{display:block}.runner-bar{height:38px;background:#29292d;display:flex;align-items:center;justify-content:space-between;padding:0 9px 0 12px;font-size:12px;color:#c7c7cc}.runner-actions{display:flex;gap:6px}.runner-actions button{border:1px solid #48484d;background:#36363a;border-radius:8px;padding:5px 8px;cursor:pointer;font-size:11px}.runner iframe{display:block;width:100%;height:230px;border:0;background:#fff}
+  .publish-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{display:grid;gap:7px;margin-top:12px}.field label{font-size:13px;color:#bdbdc2}.field input,.field textarea,.field select{border-radius:11px;border:1px solid #48484d;background:#19191c;color:#fff;padding:10px 12px;outline:none}.field input,.field select{height:43px}.field textarea{min-height:76px;resize:vertical}.field.full{grid-column:1/-1}.helper{font-size:11px;color:#85858c;margin-top:5px}.publish{margin-top:14px;width:100%;border:0;border-radius:12px;height:44px;background:var(--accent);color:#171719;font-weight:900;cursor:pointer}.publish:disabled{opacity:.42;cursor:not-allowed}
+  .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 18px);transform:translate(-50%,18px);background:#111114;color:#fff;border:1px solid #404045;border-radius:12px;padding:10px 14px;opacity:0;pointer-events:none;transition:.18s ease;z-index:70;font-size:13px;box-shadow:0 15px 40px rgba(0,0,0,.28)}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  @media (max-width:760px){
+    :root{--nav-h:70px}
+    .project{grid-template-rows:82px 1fr}.creator-bar{padding:10px 12px}.brand-tile{width:46px;height:46px;font-size:20px}.avatar{width:42px;height:42px}.project-title{font-size:13px}.follow-btn{padding:5px 8px}
+    .rail{right:10px;bottom:12px;gap:8px}.rail-btn{width:45px;min-height:45px;border-radius:14px}.rail-btn svg{width:23px;height:23px}.next-hint{right:65px}
+    .search-screen{padding:10px}.searchbox{height:50px}.searchbox input{font-size:17px}.result-card{grid-template-columns:112px 1fr;gap:12px}.thumb{height:76px}.result-desc{display:none}
+    .profile-screen{padding:16px 12px}.profile-top{grid-template-columns:78px 1fr}.big-avatar{width:78px;height:78px}.big-avatar svg{width:46px;height:46px}.google-btn{grid-column:1/-1;justify-self:start}.profile-card{min-height:96px;padding:14px}.profile-card h1{font-size:24px}.tabs{grid-template-columns:repeat(2,1fr)}.profile-project{grid-template-columns:1fr}.profile-project .thumb{height:160px}
+    .tag-row{max-width:55vw}.tag{font-size:9px;padding:3px 5px}.publish-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.embed-url-row{grid-template-columns:1fr}.source-action{min-height:41px}.runner iframe{height:190px}.info-card{padding:15px}
+    .science-stage{width:88vw}.science-controls{left:12px;top:12px;min-width:150px}.science-readout{right:10px;bottom:10px;max-width:55%}.meter-wrap{width:82vw}.meter-face{font-size:86px}
+    .project-app{padding:10px 62px 10px 10px}.project-shell{width:100%;padding:15px;border-radius:19px}.project-shell h2{font-size:26px}.project-shell p{font-size:13px}
+    .color-grid{grid-template-columns:1fr;gap:12px}.palette{min-height:150px}.swatch span{font-size:8px;padding:4px;left:4px;bottom:5px}
+    .memory-wrap{grid-template-columns:1fr;gap:12px}.memory-grid{width:min(58vw,250px);justify-self:center}.memory-copy{grid-template-columns:repeat(2,1fr)}.memory-copy .project-action{grid-column:1/-1}
+    .math-question{font-size:48px;padding:8px}.math-answer{height:50px}.pulse-stage{gap:12px;margin-top:12px}.pulse-orb{width:126px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+
+  /* production web profile/social refinements */
+  .creator-bar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:12px;row-gap:2px;align-items:center}
+  .creator-bar .brand-tile{grid-row:1/3}
+  .creator-profile-hitbox{grid-column:2;grid-row:1;min-width:0;width:max-content;max-width:100%;justify-self:start;display:flex;align-items:center;gap:10px;border:0;background:transparent;color:inherit;padding:0;margin:0;text-align:left;cursor:pointer;border-radius:12px;outline:none}
+  .creator-profile-hitbox:hover{background:rgba(255,255,255,.045)}
+  .creator-profile-hitbox:focus-visible{box-shadow:0 0 0 2px rgba(255,159,47,.75)}
+  .creator-profile-hitbox .avatar{pointer-events:none}
+  .creator-identity{min-width:0;display:grid;gap:1px;padding-right:4px}
+  .creator-name{overflow:hidden;text-overflow:ellipsis}
+  .creator-hint{font-size:10px;color:#929298;font-weight:650}
+  .creator-bar>.follow-btn{grid-column:3;grid-row:1;justify-self:end;position:relative;z-index:2}
+  .creator-meta{grid-column:2/4;grid-row:2;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden}
+  .creator-meta .project-title{min-width:0;flex:0 1 auto}
+  .creator-meta .tag-row{min-width:0;flex:1}
+  .avatar img,.big-avatar img,.profile-dot img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
+  .profile-top{align-items:stretch}
+  .big-avatar{overflow:hidden;align-self:center}
+  .profile-actions{display:grid;gap:8px;align-content:center;min-width:156px}
+  .profile-actions .google-btn,.profile-actions .mini-btn{justify-content:center;width:100%}
+  .profile-card .handle{font-size:13px;color:#aaaab0;margin-bottom:5px}
+  .profile-card .bio{font-size:14px;color:#d7d7db;margin-top:5px;line-height:1.35}
+  .profile-card .presence{font-size:11px;color:#8ee8b2;margin-top:6px;font-weight:750}
+  .profile-card .presence.offline{color:#929298}
+  .tabs{grid-template-columns:repeat(5,1fr)}
+  .user-result-card{width:100%;border:1px solid #3c3c40;background:#252528;color:#fff;border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:11px;text-align:left;cursor:pointer;margin-bottom:8px}
+  .user-result-card:hover{background:#2f2f33}
+  .user-result-card .avatar{width:42px;height:42px;overflow:hidden}
+  .user-result-copy{min-width:0;display:grid;gap:2px}.user-result-copy strong{font-size:14px}.user-result-copy span{font-size:11px;color:#9d9da4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .section-label{margin:14px 0 8px;color:#a7a7ad;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+  .social-pending{opacity:.58;pointer-events:none}
+
+
+  .comments-modal{display:flex;justify-content:flex-end;align-items:stretch;padding:0;z-index:60}
+  .comments-modal .modal{width:min(440px,100%);height:100%;height:100dvh;max-height:none;border-radius:18px 0 0 18px;display:flex;flex-direction:column;margin:0;padding:24px;padding-top:max(24px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(100%);transition:transform .18s ease;overflow:hidden}
+  .comments-modal.open .modal{transform:translateX(0)}
+  .comments-modal .modal-head{flex:none;align-items:flex-start;gap:12px}
+  .comments-modal .modal-head h2{overflow-wrap:anywhere;font-size:20px;line-height:1.35}
+  .comments-modal .comments-list{flex:1;min-height:0;max-height:none;align-content:start;overscroll-behavior:contain}
+  .comments-modal .comment-composer{flex:none}
+  .comments-modal .comment-composer textarea{resize:none;max-height:140px}
+  .comments-modal .comment-composer-actions{align-items:flex-end}
+  .comments-modal .comment-composer-actions .publish{width:auto;min-width:105px;margin:0}
+  .comments-modal .comment-auth-hint{overflow-wrap:anywhere;min-width:0}
+  .comments-modal .close{flex:none}
+  #confirmDialog{color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:18px;width:min(420px,calc(100% - 32px));padding:24px;z-index:65}
+  #confirmDialog::backdrop{background:rgba(0,0,0,.65)}
+  #confirmDialog .confirm-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:20px}
+  button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  @media(max-width:600px){.comments-modal .modal{border-radius:0;padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}}
+  @media(prefers-reduced-motion:reduce){.comments-modal,.comments-modal .modal{transition:none}}
+
+  .comments-list{display:grid;gap:10px;margin:14px 0;max-height:min(52vh,520px);overflow:auto;padding-right:3px}
+  .comment-row{position:relative;padding:12px 12px 11px;border:1px solid #3d3d42;background:#29292d;border-radius:14px}
+  .comment-row p{margin:9px 0 0;color:#e1e1e4;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;padding-right:48px}
+  .comment-author{appearance:none;border:0;background:transparent;color:inherit;padding:0;display:flex;align-items:center;gap:9px;text-align:left;cursor:pointer;max-width:calc(100% - 64px)}
+  .comment-author span{min-width:0}.comment-author strong,.comment-author small{display:block}.comment-author small{margin-top:2px;color:#9c9ca3;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .comment-avatar{width:34px;height:34px;border-radius:50%;overflow:hidden;background:var(--accent2);display:grid;place-items:center;flex:none}.comment-avatar img{width:100%;height:100%;object-fit:cover}.comment-avatar svg{width:21px;height:21px;fill:#fff}
+  .comment-delete{position:absolute;right:10px;top:10px;border:1px solid rgba(255,105,105,.35);background:rgba(120,24,24,.2);color:#ffaaaa;border-radius:8px;padding:5px 7px;font-size:10px;cursor:pointer}
+  .comment-composer{display:grid;gap:8px;border-top:1px solid #3a3a3e;padding-top:13px}.comment-composer textarea{width:100%;min-height:84px;resize:vertical;border:1px solid #46464b;background:#19191c;color:#fff;border-radius:12px;padding:11px;outline:none}.comment-composer textarea:focus{border-color:#77777f}.comment-composer-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}.comment-auth-hint{font-size:11px;color:#a9a9af}.comment-auth-hint strong{color:#fff}
+  .sync-indicator{position:fixed;top:10px;right:10px;z-index:90;padding:5px 8px;border-radius:999px;background:rgba(17,17,20,.72);border:1px solid #3d3d42;color:#aaaab0;font-size:10px;pointer-events:none;backdrop-filter:blur(8px)}
+  .sync-indicator.online{color:#8ee8b2;opacity:0;transition:opacity .3s ease 1.6s}.sync-indicator.error{color:#ff9d9d}
+  .danger-note{margin-top:8px;font-size:11px;color:#ffc189}
+  .profile-edit-grid{display:grid;gap:10px}
+  .profile-edit-grid label{display:grid;gap:5px;color:#bdbdc2;font-size:12px}.profile-edit-grid input,.profile-edit-grid textarea{border:1px solid #48484d;background:#19191c;color:#fff;border-radius:10px;padding:10px 11px;font:inherit}.profile-edit-grid textarea{min-height:90px;resize:vertical}
+  .saved-project-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border:1px solid #3d3d42;background:#29292d;border-radius:13px;margin-top:8px}.saved-project-row button{border:1px solid #4b4b50;background:#37373b;color:#fff;border-radius:9px;padding:7px 10px;cursor:pointer}
+  @media (max-width:760px){.creator-bar{grid-template-columns:auto minmax(0,1fr) auto;column-gap:8px}.creator-profile-hitbox{gap:7px}.creator-hint{display:none}.creator-meta{gap:5px}.profile-actions{grid-column:1/-1;grid-template-columns:1fr 1fr;min-width:0}.profile-actions .google-btn{grid-column:auto}.tabs{grid-template-columns:repeat(2,1fr)}}
+  .thumb.has-image img{width:100%;height:100%;object-fit:cover;display:block}.thumb.has-image::before,.thumb.has-image::after{display:none}.image-picker{display:grid;gap:8px}.image-drop{margin:0;width:100%;display:grid;place-items:center;gap:10px;min-height:110px;font:inherit}.image-drop img{display:block;width:100%;height:150px;object-fit:contain}.image-drop img[hidden]{display:none}.image-drop:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.project-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:2}.project[data-play-state=playing] .project-thumbnail{display:none}*{scrollbar-width:thin;scrollbar-color:#73737a #202023}.image-picker .helper{min-height:2.4em}
+
+  /* Owner project management: deliberately scoped to the existing profile and modal. */
+  .profile-project{border:1px solid #3e3e43;background:#29292d;border-radius:14px;padding:12px;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+  .profile-project:hover{border-color:#68686f;background:#303035}
+  .profile-project:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .profile-project-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+  .profile-project-actions h3{flex:1 1 135px;min-width:0;overflow-wrap:anywhere;margin-right:auto}
+  .profile-project-actions button{flex:0 0 auto;min-height:34px}
+  .profile-project .thumb{min-width:0}
+  #projectEditModal .modal{width:min(580px,100%)}
+  #projectEditModal .field input,#projectEditModal .field textarea,#projectEditModal .field select{width:100%;min-width:0}
+  .project-edit-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .project-edit-actions .publish{margin:0;width:auto;min-width:150px;padding:0 20px}
+  .project-edit-actions .mini-btn{padding:0 18px}
+  @media(max-width:600px){.profile-project-actions h3{flex-basis:100%}.project-edit-actions .publish{flex:1}}
+
+</style>
+<meta content="RapidFire — discover, play, publish and follow interactive web projects." name="description"/></head>
+<body>
+<div class="app" id="app">
+<main class="view">
+<section class="screen active" data-screen="home" id="homeScreen">
+<div class="feed" id="feed"></div>
+</section>
+<section class="screen" data-screen="search" id="searchScreen">
+<div class="search-screen">
+<label class="searchbox">
+<svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+<input autocomplete="off" id="searchInput" placeholder="Search projects, games, creators…" type="search"/>
+</label>
+<div class="search-content" id="searchContent"></div>
+</div>
+</section>
+<section class="screen" data-screen="profile" id="profileScreen">
+<div class="profile-screen">
+<div class="profile-shell">
+<div class="profile-top"><div class="big-avatar" id="profileAvatar"><svg viewbox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0z"></path></svg></div><div class="profile-card" id="profileCard"><h1>Guest</h1><p>Browse freely. Sign in when you want social features.</p></div><div class="profile-actions" id="profileActions"><button class="google-btn" id="signInBtn"><span class="g-mark">G</span><span id="signInText">Sign in with Google</span></button></div></div>
+
+<div id="profileMemberArea">
+<div class="tabs" id="profileTabs"><button class="active" data-profile-tab="projects">Projects</button><button data-profile-tab="posts">Posts</button><button data-profile-tab="followers">Followers</button><button data-profile-tab="following">Following</button><button data-profile-tab="saved">Saved</button></div>
+<div class="projects-panel" id="profilePanel"></div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<nav aria-label="Main navigation" class="nav">
+<button aria-label="Home" class="active" data-nav="home"><svg viewbox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg></button>
+<button aria-label="Search" data-nav="search"><svg viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg></button>
+<button aria-label="Publish" class="add" data-nav="add"><svg viewbox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button aria-label="Profile" data-nav="profile"><span class="profile-dot"><svg viewbox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0z"></path></svg></span></button>
+</nav>
+</div>
+<div aria-hidden="true" class="modal-backdrop" id="publishModal">
+<div aria-labelledby="publishTitle" aria-modal="true" class="modal" role="dialog">
+<div class="modal-head"><h2 id="publishTitle">Run or embed a project</h2><button aria-label="Close" class="close" id="closeModal">×</button></div>
+<input accept=".html,text/html" hidden="" id="htmlFile" type="file"/>
+<div class="dropzone" id="dropzone" tabindex="0"><strong>Drop a single-file HTML here or click to choose</strong><br/><span id="dropStatus">Preview it here. Published feed cards wait for “Tap to play”.</span></div>
+<div class="source-divider"><span>or embed a URL</span></div>
+<div class="field"><label for="embedUrl">Embed URL</label><div class="embed-url-row"><input autocomplete="url" id="embedUrl" inputmode="url" placeholder="https://example.com/embed/project"/><button class="source-action" id="loadEmbedUrl" type="button">Preview URL</button></div><div class="helper">Use a direct HTTP(S) page or player URL that allows iframe embedding. Some websites block being embedded.</div></div>
+<div class="runner" id="runner">
+<div class="runner-bar"><span id="runnerName">Local runner</span><div class="runner-actions"><button id="restartPreview" type="button">Restart</button><button id="fullscreenPreview" type="button">Fullscreen</button></div></div>
+<iframe id="runnerPreview" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads" title="Local HTML preview"></iframe>
+</div>
+<div class="publish-grid">
+<div class="field"><label for="projectName">Project name</label><input id="projectName" placeholder="My tiny game"/></div>
+<div class="field"><label for="projectCategory">Category</label><select id="projectCategory"><option>Game</option><option>Tool</option><option>Education</option><option>Art</option><option>Experiment</option><option>Other</option></select></div>
+<div class="field full"><div class="image-picker"><span>Project thumbnail</span><input type="file" id="thumbnailFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/><button class="dropzone image-drop" id="thumbnailDrop" type="button" aria-describedby="thumbnailStatus"><img id="thumbnailPreview" hidden alt="Project thumbnail preview"/><span>Drop an image or click to choose</span></button><div class="helper" id="thumbnailStatus" role="status" aria-live="polite"></div><button id="thumbnailRemove" type="button" class="mini-btn" hidden>Remove selected image</button></div></div>
+<div class="field full"><label for="projectDescription">Description</label><textarea id="projectDescription" placeholder="What can people do in this project?"></textarea></div>
+<div class="field full"><label for="projectTags">Tags</label><input id="projectTags" placeholder="arcade, rhythm, webgame"/><div class="helper">Comma separated. Tags are searchable.</div></div>
+</div>
+<button class="publish" disabled="" id="publishBtn">Publish to RapidFire</button>
+<div class="helper">Sign in to publish. HTML uploads and images are saved with your project. Projects load only after the viewer taps Play.</div>
+</div>
+</div>
+<div aria-hidden="true" class="info-sheet" id="infoSheet">
+<div class="info-card">
+<div class="info-head"><div><h2 id="infoTitle">Project</h2><div class="info-meta" id="infoCreator"></div></div><button aria-label="Close" class="close" id="closeInfo">×</button></div>
+<p id="infoDescription"></p>
+<div class="tag-row" id="infoTags"></div>
+<div class="info-meta" id="infoExtra"></div>
+</div>
+</div>
+<dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage"><h2 id="confirmTitle">Delete item</h2><p id="confirmMessage"></p><div class="confirm-actions"><button class="mini-btn" id="confirmCancel" type="button" autofocus>Cancel</button><button class="danger-btn" id="confirmDelete" type="button">Delete</button></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+
+
+
+
+<div class="sync-indicator" id="syncIndicator">Starting RapidFire…</div>
+
+<div aria-hidden="true" class="modal-backdrop" id="projectEditModal">
+  <div aria-labelledby="projectEditTitle" aria-modal="true" class="modal" role="dialog">
+    <div class="modal-head"><h2 id="projectEditTitle">Edit project</h2><button aria-label="Close project editor" class="close" id="closeProjectEdit" type="button">×</button></div>
+    <div class="publish-grid">
+      <div class="field"><label for="editProjectName">Project name</label><input id="editProjectName" maxlength="120" autocomplete="off"/></div>
+      <div class="field"><label for="editProjectCategory">Category</label><select id="editProjectCategory"><option>Game</option><option>Tool</option><option>Education</option><option>Art</option><option>Experiment</option><option>Other</option></select></div>
+      <div class="field full"><label for="editProjectDescription">Description</label><textarea id="editProjectDescription" maxlength="2000"></textarea></div>
+      <div class="field full"><label for="editProjectTags">Tags (comma separated)</label><input id="editProjectTags" maxlength="320" placeholder="arcade, puzzle, web"/></div>
+      <div class="field full">
+        <div class="image-picker"><span>Project thumbnail</span><input type="file" id="editThumbFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/>
+          <button class="dropzone image-drop" id="editThumbDrop" type="button" aria-describedby="editThumbStatus"><img id="editThumbPreview" hidden alt="Project thumbnail preview"/><span>Replace thumbnail image</span></button>
+          <div class="helper" id="editThumbStatus" role="status" aria-live="polite"></div>
+          <button id="editThumbRemove" type="button" class="mini-btn" hidden>Remove thumbnail</button>
+        </div>
+      </div>
+      <div class="field full" id="editProjectEmbedGroup" hidden><label for="editProjectEmbed">Embed URL</label><input id="editProjectEmbed" inputmode="url" placeholder="https://example.com/my-project"/><div class="helper">The new URL must be HTTP(S) and permit iframe embedding.</div></div>
+      <div class="field full" id="editProjectHTMLGroup" hidden><label for="editProjectHTML">Replace HTML source (optional)</label><input id="editProjectHTML" type="file" accept=".html,.htm,text/html"/><div class="helper">Leave blank to keep the current HTML source. Changing metadata does not require re-uploading.</div></div>
+    </div>
+    <div class="project-edit-actions"><button class="mini-btn" id="cancelProjectEdit" type="button">Cancel</button><button class="publish" id="saveProjectEdit" type="button">Save changes</button></div>
+  </div>
+</div>
+
+<div aria-hidden="true" class="modal-backdrop" id="profileEditModal"><div aria-labelledby="profileEditTitle" aria-modal="true" class="modal" role="dialog"><div class="modal-head"><h2 id="profileEditTitle">Edit profile</h2><button aria-label="Close" class="close" id="closeProfileEdit">×</button></div><div class="profile-edit-grid"><label>Display name<input id="editDisplayName" maxlength="50"/></label><label>Handle<input autocapitalize="off" id="editHandle" maxlength="28" spellcheck="false"/></label><label>Bio<textarea id="editBio" maxlength="180"></textarea></label><div class="image-picker"><span>Profile photo</span><input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden/><button class="dropzone image-drop" id="avatarDrop" type="button" aria-describedby="avatarStatus"><img id="avatarPreview" hidden alt="Profile photo preview"/><span>Drop an image or click to choose</span></button><div class="helper" id="avatarStatus" role="status" aria-live="polite"></div><button id="avatarRemove" type="button" class="mini-btn" hidden>Remove selected image</button></div><label>Avatar URL<input id="editAvatarUrl" inputmode="url" placeholder="https://…"/></label></div><button class="publish" id="saveProfileEdit">Save profile</button></div></div>
+
+<div aria-hidden="true" class="modal-backdrop comments-modal" id="commentsModal">
+  <div aria-labelledby="commentsTitle" aria-modal="true" class="modal" role="dialog">
+    <div class="modal-head"><h2 id="commentsTitle">Comments</h2><button aria-label="Close comments" class="close" id="closeComments">×</button></div>
+    <div class="comments-list" id="commentsList"><div class="empty-compact">Loading comments…</div></div>
+    <div class="comment-composer">
+      <label class="comment-auth-hint" for="commentText">Your comment</label><textarea id="commentText" maxlength="500" placeholder="Add a comment…"></textarea>
+      <div class="comment-composer-actions"><div class="comment-auth-hint" id="commentAuthHint">Sign in to comment</div><button class="publish" id="commentSubmit" type="button">Comment</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* RapidFire production core bundle: UI boots independently; Firebase connects asynchronously. */
+const SDK_VERSION = '12.19.0';
+const sdk = name => `https://www.gstatic.com/firebasejs/${SDK_VERSION}/${name}.js`;
+
+function key(value){
+  return String(value || '').replace(/[.#$\[\]/]/g, '_').slice(0, 180);
+}
+function normalizeHandle(value){
+  return String(value || '').trim().replace(/^@+/, '').replace(/\s+/g, '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 28);
+}
+
+async function createFirebaseService(firebaseConfig, options={}){
+  const timeoutMs = Math.max(1500, Number(options.timeoutMs || 8000));
+  const load = Promise.all([
+    import(sdk('firebase-app')),
+    import(sdk('firebase-auth')),
+    import(sdk('firebase-firestore')),
+    import(sdk('firebase-database')),
+    import(sdk('firebase-storage'))
+  ]);
+  let timeoutId = 0;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`Firebase SDK load timed out after ${timeoutMs} ms`)), timeoutMs);
+  });
+  let modules;
+  try { modules = await Promise.race([load, timeout]); }
+  finally { clearTimeout(timeoutId); }
+  const [appMod, authMod, fsMod, dbMod, storageMod] = modules;
+
+  const app = appMod.initializeApp(firebaseConfig);
+  const auth = authMod.getAuth(app);
+  await authMod.setPersistence(auth, authMod.browserLocalPersistence).catch(()=>{});
+  const firestore = fsMod.getFirestore(app);
+  const realtime = dbMod.getDatabase(app);
+  const storage = storageMod.getStorage(app, `gs://${firebaseConfig.storageBucket}`);
+
+  if (location.protocol === 'https:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+    import(sdk('firebase-analytics')).then(async analyticsMod => {
+      try { if (await analyticsMod.isSupported()) analyticsMod.getAnalytics(app); } catch (_) {}
+    }).catch(()=>{});
+  }
+
+  const googleProvider = new authMod.GoogleAuthProvider();
+  googleProvider.setCustomParameters({prompt:'select_account'});
+
+  const api = {
+    app, auth, firestore, realtime, storage,
+    onAuth(callback){ return authMod.onAuthStateChanged(auth, callback); },
+    async signInGoogle(){
+      try {
+        return (await authMod.signInWithPopup(auth, googleProvider)).user;
+      } catch (error) {
+        const code=String(error?.code||'');
+        if (['auth/popup-blocked','auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment'].includes(code)) {
+          await authMod.signInWithRedirect(auth, googleProvider);
+          return null;
+        }
+        throw error;
+      }
+    },
+    async signOut(){ return authMod.signOut(auth); },
+    async checkBackendAccess(){
+      const result={firestore:false,realtime:false,errors:{}};
+      try{await fsMod.getDocs(fsMod.query(fsMod.collection(firestore,'users'),fsMod.limit(1)));result.firestore=true;}catch(error){result.errors.firestore=error;}
+      try{await dbMod.get(dbMod.ref(realtime,'social/projects/__health__/likes'));result.realtime=true;}catch(error){result.errors.realtime=error;}
+      return result;
+    },
+
+    async upsertProfile(profile){
+      const userRef=fsMod.doc(firestore,'users',profile.id);
+      await fsMod.runTransaction(firestore,async tx=>{
+        const existing=await tx.get(userRef);
+        const current=existing.exists()?existing.data():null;
+        const authUid=auth.currentUser?.uid||'';
+        if(!authUid)throw new Error('Sign in to continue.');
+        let handle=normalizeHandle(current?.handle||profile.handle)||`user-${String(authUid||'user').slice(0,6)}`;
+        if(handle.toLowerCase()==='maxp'&&profile.id!=='user-maxp') handle=normalizeHandle(`${handle}-${String(authUid||'user').slice(0,6)}`);
+        let handleRef=fsMod.doc(firestore,'handles',handle.toLowerCase());
+        let handleSnap=await tx.get(handleRef);
+        if(handleSnap.exists()&&handleSnap.data().profileId!==profile.id){
+          handle=normalizeHandle(`${handle}-${String(authUid||'user').slice(0,6)}`);
+          handleRef=fsMod.doc(firestore,'handles',handle.toLowerCase());
+          handleSnap=await tx.get(handleRef);
+          if(handleSnap.exists()&&handleSnap.data().profileId!==profile.id) throw new Error('Could not reserve a unique handle.');
+        }
+        const payload={
+          id:profile.id,
+          handle,
+          handleLower:handle.toLowerCase(),
+          displayName:String(current?.displayName||profile.displayName||handle).trim().slice(0,50),
+          bio:String(current?.bio??profile.bio??'').trim().slice(0,180),
+          avatarUrl:String(current?.avatarUrl??profile.avatarUrl??'').trim(),
+          authUid,
+          createdAt:current?.createdAt||fsMod.serverTimestamp(),
+          updatedAt:fsMod.serverTimestamp()
+        };
+        // Preserve legacy metadata while binding ownership to Firebase Auth.
+        tx.set(handleRef,{profileId:profile.id,updatedAt:fsMod.serverTimestamp()});
+        tx.set(userRef,payload,{merge:true});
+      });
+      const resolved=await fsMod.getDoc(userRef);
+      return resolved.exists()?{id:resolved.id,...resolved.data()}:profile;
+    },
+    subscribeProfiles(callback, onError=()=>{}){
+      const q = fsMod.query(fsMod.collection(firestore,'users'), fsMod.limit(250));
+      return fsMod.onSnapshot(q, snap => callback(snap.docs.map(d=>({id:d.id,...d.data()}))), onError);
+    },
+    async getProfile(profileId){
+      const snap = await fsMod.getDoc(fsMod.doc(firestore,'users',profileId));
+      return snap.exists()?{id:snap.id,...snap.data()}:null;
+    },
+    async updateProfile(profileId, oldHandle, patch, avatarImage){
+      const desired = normalizeHandle(patch.handle);
+      if (!desired) throw new Error('Handle must contain letters or numbers.');
+      if(desired.toLowerCase()==='maxp' && profileId!=='user-maxp') throw new Error('That handle is reserved.');
+      const userRef = fsMod.doc(firestore,'users',profileId);
+      const newHandleRef = fsMod.doc(firestore,'handles',desired.toLowerCase());
+      await fsMod.runTransaction(firestore, async tx => {
+        const userSnap=await tx.get(userRef);
+        if(!userSnap.exists())throw new Error('Your profile is not ready. Sign in again and retry.');
+        const oldLower=normalizeHandle(userSnap.data().handle).toLowerCase();
+        const newSnap = await tx.get(newHandleRef);
+        if (newSnap.exists() && newSnap.data().profileId !== profileId) throw new Error('That handle is already taken.');
+        let oldRef=null, oldSnap=null;
+        if(oldLower && oldLower !== desired.toLowerCase()){
+          oldRef = fsMod.doc(firestore,'handles',oldLower);
+          oldSnap = await tx.get(oldRef);
+        }
+        tx.set(newHandleRef,{profileId,updatedAt:fsMod.serverTimestamp()},{merge:true});
+        if(oldRef && oldSnap?.exists() && oldSnap.data().profileId === profileId) tx.delete(oldRef);
+        tx.set(userRef,{
+          handle:desired,
+          handleLower:desired.toLowerCase(),
+          displayName:String(patch.displayName||desired).trim().slice(0,50),
+          bio:String(patch.bio||'').trim().slice(0,180),
+          avatarUrl:String(avatarImage||patch.avatarUrl||'').trim(),
+          updatedAt:fsMod.serverTimestamp()
+        },{merge:true});
+      });
+      return {...patch,id:profileId,handle:desired,avatarUrl:avatarImage||patch.avatarUrl||''};
+    },
+
+    subscribeProjects(callback, onError=()=>{}){
+      const q = fsMod.query(fsMod.collection(firestore,'projects'), fsMod.where('published','==',true), fsMod.orderBy('createdAt','desc'), fsMod.limit(100));
+      return fsMod.onSnapshot(q, snap => callback(snap.docs.map(d=>({id:d.id,...d.data()}))), onError);
+    },
+    async upsertProject(project,extras={}){
+      if(extras.html){Object.assign(project,await api.publishHtml({ownerUserId:project.ownerUserId,projectId:project.id,html:extras.html}));}
+      if(extras.thumbnailImage)project.thumbnailUrl=extras.thumbnailImage;
+      const payload = {
+        id:project.id,
+        ownerUserId:project.ownerUserId,
+        title:project.title,
+        desc:project.desc||'',
+        tags:Array.isArray(project.tags)?project.tags.slice(0,8):[],
+        category:project.category||'Project',
+        sourceType:project.sourceType||project.type||'embed',
+        contentUrl:project.contentUrl||'',
+        embedUrl:project.embedUrl||'',
+        storagePath:project.storagePath||'',
+        sourceVersion:project.sourceVersion||'',
+        thumbnailUrl:project.thumbnailUrl||'',
+        createdAt: project.createdAt instanceof Date ? project.createdAt : fsMod.serverTimestamp(),
+        updatedAt:fsMod.serverTimestamp(),
+        published:true
+      };
+      const projectRef=fsMod.doc(firestore,'projects',project.id);
+      const existing=await fsMod.getDoc(projectRef);
+      if(existing.exists()&&existing.data().createdAt) delete payload.createdAt;
+      await fsMod.setDoc(projectRef,payload,{merge:true});
+      return {...payload,createdAt:existing.data()?.createdAt?.toMillis?.()||Date.now()};
+    },
+    async publishHtml({ownerUserId, projectId, html}){
+      // Spark-compatible hosting: source parts stay under Firestore's document
+      // size limit. A parent owner reservation prevents cross-account uploads.
+      const projectRef=fsMod.doc(firestore,'projects',projectId),version=crypto.randomUUID();
+      await fsMod.runTransaction(firestore,async tx=>{
+        const old=await tx.get(projectRef);
+        if(old.exists()&&old.data().ownerUserId!==ownerUserId)throw new Error('This project belongs to another account.');
+        if(!old.exists())tx.set(projectRef,{id:projectId,ownerUserId,published:false});
+      });
+      // Code points avoid splitting surrogate pairs. <= 150k characters is
+      // <= 600k UTF-8 bytes, leaving room for document fields and indexes.
+      const points=Array.from(html),parts=[];
+      for(let offset=0;offset<points.length;offset+=150000)parts.push(points.slice(offset,offset+150000).join(''));
+      for(let offset=0;offset<parts.length;offset+=10){
+        const batch=fsMod.writeBatch(firestore);
+        parts.slice(offset,offset+10).forEach((source,i)=>batch.set(fsMod.doc(firestore,'projects',projectId,'source',`${version}-${String(offset+i).padStart(6,'0')}`),{ownerUserId,version,index:offset+i,source}));
+        await batch.commit();
+      }
+      return {contentUrl:`firestore:${projectId}:${version}`,storagePath:'',sourceVersion:version};
+    },
+    async getProjectHTML(contentUrl){
+      const [,projectId,version]=contentUrl.split(':');
+      const rows=await fsMod.getDocs(fsMod.query(fsMod.collection(firestore,'projects',projectId,'source'),fsMod.where('version','==',version)));
+      if(rows.empty)throw new Error('Project source is not available yet.');
+      return rows.docs.map(d=>d.data()).sort((a,b)=>a.index-b.index).map(row=>row.source).join('');
+    },
+    async deleteProject(project){
+      const source=await fsMod.getDocs(fsMod.collection(firestore,'projects',project.id,'source'));
+      for(let offset=0;offset<source.docs.length;offset+=400){const batch=fsMod.writeBatch(firestore);source.docs.slice(offset,offset+400).forEach(doc=>batch.delete(doc.ref));await batch.commit();}
+      await fsMod.deleteDoc(fsMod.doc(firestore,'projects',project.id));
+      if(project.storagePath){
+        try{ await storageMod.deleteObject(storageMod.ref(storage,project.storagePath)); }catch(_){}
+      }
+    },
+
+    async syncBuiltins(projects){for(const project of projects)await api.upsertProject(project);},
+    subscribePosts(profileId, callback, onError=()=>{}){
+      const q=fsMod.query(fsMod.collection(firestore,'posts'),fsMod.where('ownerUserId','==',profileId),fsMod.orderBy('createdAt','desc'),fsMod.limit(50));
+      return fsMod.onSnapshot(q,snap=>callback(snap.docs.map(d=>({id:d.id,...d.data()}))),onError);
+    },
+    async createPost(profileId,text){
+      const ref=fsMod.doc(fsMod.collection(firestore,'posts'));
+      await fsMod.setDoc(ref,{id:ref.id,ownerUserId:profileId,text:String(text||'').trim().slice(0,280),createdAt:fsMod.serverTimestamp(),updatedAt:fsMod.serverTimestamp()});
+      return ref.id;
+    },
+    async deletePost(postId){ await fsMod.deleteDoc(fsMod.doc(firestore,'posts',postId)); },
+
+    subscribeProjectSocial(projectId, currentProfileId, callback, onError=()=>{}){
+      const p=key(projectId), u=key(currentProfileId||'');
+      const state={likes:0,saves:0,shares:0,comments:0,liked:false,saved:false,shared:false};
+      const emit=()=>callback({...state});
+      const unsubs=[];
+      for(const kind of ['likes','saves','shares','comments']){
+        const r=dbMod.ref(realtime,`social/projects/${p}/${kind}`);
+        unsubs.push(dbMod.onValue(r,snap=>{
+          state[kind]=snap.size;
+          if(kind!=='comments'){
+            const singular=kind==='likes'?'liked':kind==='saves'?'saved':'shared';
+            state[singular]=u? snap.hasChild(u):false;
+          }
+          emit();
+        },onError));
+      }
+      return ()=>unsubs.forEach(fn=>{try{fn();}catch(_){} });
+    },
+    async toggleProjectSocial(kind,projectId,profileId){
+      if(!['likes','saves','shares'].includes(kind)) throw new Error('Unsupported social action');
+      const p=key(projectId),u=key(profileId);
+      const target=dbMod.ref(realtime,`social/projects/${p}/${kind}/${u}`);
+      const snap=await dbMod.get(target);
+      const next=!snap.exists();
+      const updates={};
+      updates[`social/projects/${p}/${kind}/${u}`]=next?{at:dbMod.serverTimestamp()}:null;
+      if(kind==='saves') updates[`social/users/${u}/saved/${p}`]=next?{at:dbMod.serverTimestamp()}:null;
+      await dbMod.update(dbMod.ref(realtime),updates);
+      return next;
+    },
+    async markShared(projectId,profileId){
+      const p=key(projectId),u=key(profileId);
+      await dbMod.set(dbMod.ref(realtime,`social/projects/${p}/shares/${u}`),{at:dbMod.serverTimestamp()});
+    },
+    subscribeProjectComments(projectId,callback,onError=()=>{}){
+      const commentsRef=dbMod.ref(realtime,`social/projects/${key(projectId)}/comments`);
+      return dbMod.onValue(commentsRef,snap=>{
+        const value=snap.val()||{};
+        const comments=Object.entries(value).map(([id,row])=>({id,...row})).sort((a,b)=>(Number(a.at)||0)-(Number(b.at)||0));
+        callback(comments);
+      },onError);
+    },
+    async createComment(projectId,profileId,text){
+      const clean=String(text||'').trim().slice(0,500);
+      if(!clean) throw new Error('Write a comment first.');
+      const commentsRef=dbMod.ref(realtime,`social/projects/${key(projectId)}/comments`);
+      const commentRef=dbMod.push(commentsRef);
+      await dbMod.set(commentRef,{authorProfileId:String(profileId),text:clean,at:dbMod.serverTimestamp()});
+      return commentRef.key;
+    },
+    async deleteComment(projectId,commentId){
+      await dbMod.remove(dbMod.ref(realtime,`social/projects/${key(projectId)}/comments/${key(commentId)}`));
+    },
+    subscribeSaved(profileId,callback,onError=()=>{}){
+      return dbMod.onValue(dbMod.ref(realtime,`social/users/${key(profileId)}/saved`),snap=>callback(Object.keys(snap.val()||{})),onError);
+    },
+    subscribeFollowing(profileId,callback,onError=()=>{}){
+      return dbMod.onValue(dbMod.ref(realtime,`social/users/${key(profileId)}/following`),snap=>callback(Object.keys(snap.val()||{})),onError);
+    },
+    subscribeFollowers(profileId,callback,onError=()=>{}){
+      return dbMod.onValue(dbMod.ref(realtime,`social/users/${key(profileId)}/followers`),snap=>callback(Object.keys(snap.val()||{})),onError);
+    },
+    async toggleFollow(viewerId,targetId){
+      const v=key(viewerId),t=key(targetId);
+      if(v===t) return false;
+      const ownRef=dbMod.ref(realtime,`social/users/${v}/following/${t}`);
+      const snap=await dbMod.get(ownRef),next=!snap.exists();
+      const updates={};
+      updates[`social/users/${v}/following/${t}`]=next?{at:dbMod.serverTimestamp()}:null;
+      updates[`social/users/${t}/followers/${v}`]=next?{at:dbMod.serverTimestamp()}:null;
+      await dbMod.update(dbMod.ref(realtime),updates);
+      return next;
+    },
+    async setPresence(profileId,onError=()=>{}){
+      const statusRef=dbMod.ref(realtime,`presence/${key(profileId)}`);
+      const connectedRef=dbMod.ref(realtime,'.info/connected');
+      const disconnect=dbMod.onDisconnect(statusRef);let disposed=false;
+      const unsubscribe=dbMod.onValue(connectedRef,async snap=>{
+        if(snap.val()!==true||disposed)return;
+        try{
+          await disconnect.set({online:false,lastChanged:dbMod.serverTimestamp()});
+          if(disposed){await disconnect.cancel();return;}
+          await dbMod.set(statusRef,{online:true,lastChanged:dbMod.serverTimestamp()});
+        }catch(error){onError(error);}
+      },onError);
+      return async()=>{disposed=true;unsubscribe();try{await disconnect.cancel();await dbMod.set(statusRef,{online:false,lastChanged:dbMod.serverTimestamp()});}catch(error){onError(error);}};
+    },
+    subscribePresence(profileId,callback,onError=()=>{}){
+      return dbMod.onValue(dbMod.ref(realtime,`presence/${key(profileId)}`),snap=>callback(snap.val()||{online:false}),onError);
+    }
+  };
+  return api;
+}
+(() => {
+  'use strict';
+
+  // ---------- tiny DOM + storage helpers ----------
+  const $ = (q, root=document) => root.querySelector(q);
+  const $$ = (q, root=document) => [...root.querySelectorAll(q)];
+  const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  const safeStore = {
+    get(key, fallback){ try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }catch(_){ return fallback; } },
+    set(key, value){ try{ localStorage.setItem(key, JSON.stringify(value)); return true; }catch(_){ return false; } }
+  };
+  const personalBest = {
+    get(name,fallback=0){ return safeStore.get(`rapidfire.best.${name}.v1`,fallback); },
+    set(name,value){ safeStore.set(`rapidfire.best.${name}.v1`,value); return value; }
+  };
+  const toast = $('#toast');
+  let toastTimer = 0;
+  function showToast(message){ clearTimeout(toastTimer); toast.textContent = message; toast.classList.add('show'); toastTimer = setTimeout(()=>toast.classList.remove('show'), 1800); }
+
+
+  function confirmAction(message){
+    const dialog=$('#confirmDialog');if(dialog.open)return Promise.resolve(false);$('#confirmMessage').textContent=message;
+    return new Promise(resolve=>{const onClose=()=>{dialog.removeEventListener('close',onClose);resolve(dialog.returnValue==='delete');};dialog.addEventListener('close',onClose);dialog.returnValue='cancel';dialog.showModal();$('#confirmCancel').focus();});
+  }
+  $('#confirmCancel').addEventListener('click',()=>$('#confirmDialog').close('cancel'));$('#confirmDelete').addEventListener('click',()=>$('#confirmDialog').close('delete'));
+
+  // ---------- reusable project templates ----------
+  const BRAND_LOGO_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAO4AAADuCAYAAAA+7jsiAAANsklEQVR4AeydS3bcNhNGW1mS51lBhhlkjR546BV47i0p/mRBh24RfOBVVcA954fZIolC4RZvA922/vz1eDxeaTDgGYj1DEjcx+vXf2gw4BkI8gz8epN9vImrFzQIQCAOAcSNUysyhcAHAcT9QPHpBScg4JYA4rotDYlBIE8AcfNsuAIBtwQQ121pSAwCeQKIm2fDlTwBrhgTQFzjAjA8BEoIIG4JNfpAwJgA4hoXgOEhUEIAcUuo0QcCeQJDriDuEMwMAoG2BBC3LU+iQWAIAcQdgplBINCWAOK25Uk0CAwhEFTcIWwYBAJuCSCu29KQGATyBBA3z4YrEHBLAHHdlobEIJAngLh5NkGvkPYKBBB3hSozx+kIIO50JWVCKxBA3BWqzBynI4C405WUCeUJzHMFceepJTNZiADiLlRspjoPAcQ9qeXLf98fpe0kNJchUExgenFLpUv9Xv/++1HaUgwdiytERwjsEGgv7s4gtaf04Je2UulSv5rcUwwdU/418Xr0TXndPfbIhZjXCYQQV9PRw1/S1NdDS7knQTzklHJ4/fnv425L86g9phw43iMQRtx70/J797PAevD9ZpvP7K7oufs1/xYtn+mcVxDXqK5JYA2fHly9Xq3lhL57PjGsPUbhj7gjK7UzVhJYx/TQ7dzGqRMCd0XP3Z9qcPV4kla3y4jbDe39wJJXbfvQ3I9CjxoCOaH3zteMU9sXcWsJdugvedUUOkms1zQIJAKIm0g4PEre1BDYYYEMU0JcQ/h3hn4WWCLf6e/+XhK8RQBxb+GyvzkJrEwkr5pe09YigLhB650E1lHyqgWdCmkXEEDcAmjeukheNcmr5i0/8mlPAHHbMzWLKHnNBmfgfgR2IiPuDhROQcA7AcT1XiHyg8AOAcTdgcIpCHgngLjeK0R+ENghgLjvUGY56AsqvlmepZr5eSwr7suPH3kqXIGAcwLLiqu6SN6jpntoEPBIYGlxX7/+8zhqR1LrmseCktMaBJYW96zER1LrmuQ9amfxo1wnT38EELeiJpI31xRWUutIg0BrAiHElRzRJFDOrYtFPAgkAiHETclGO0reaG840Rivmi/iDqg88g6AbDSE1bCI25m8Vt3OQ7gN//Ll22OWtgdZ/wdyVv/YBXH3KtL4nORdddXV3GdouTegxo/K5XCIexlV/Y2ryltPzj7C0ZuPRXaIO4i6Cj9oKIZZgEAEcacpg+QdseryiwbTPDLZiSBuFk2/CyPk7Zc9kT0QQNzBVdCqO3hIhpuQAOIaFFXysuoagJ9oSMQ1LGYDeQ2zZ2hLAohrRF+rrtHQDDsBAcQ1LKLkZdU1LEDgoRHXuHjIa1yAoMMjbtDCkfYpgalvQFwH5WXVdVCEYCkgroOC6TdM9K+dHKRCCkEIIG6QQpEmBLYEEHdLw+A1q60B9AmGrBR3AgKTTkFbb70pTDq95aeFuIaPgMSSYIYpMHRQAsuKK2EkTtC6kfbiBJYV17ruvGlYVyD2+IjbrX7ngbXqn9/FHRD4TABxPzPhDATcEwgj7kz/ukjbZFZb9264TjCMuK4pkhwEBhNA3MHAWW0FnFZLAHFrCdIfAgYEEHcgdFbbgbAnHwpxJy8w05uTAOIOqqtW20FDvQ2j/0scfRP/9gN/BCJwLVXEvcapyV2j/goIaZuUy3UQxHVdnvvJSdr7vegRjQDiDqiYtsmjVltNx8sWOf33YzX/kqa50PYJIO4+l5BntdrekVYySa6ek1X80qb8alrPeVnHXlPcjtT3HrQRq+1daTsiaBa6VPjUb68WV881m0SnQIhbAXbvIZCkz61iiEtdZ5T20sRPbkoClxz3apvOnQw75DLiXsScirY9Pguqny+Ga3abpG0WjEAfBHKyf9xg/AJxMwXYCqrXkvK5ZboOO52kvfO5dlhyDNSVAOL+wisxn5s3SX+lufu/5tLujsJJbwSWF1fCPkuqn70V6jkfrbZI+0yl788vX749vDBfWlwJqta33O2jI217ptEiLi1utGIpX6QVBRriBnoGJG2gdOdL1dGMENdRMY5SSdJ6+Yx1lCvX+hNA3P6Mm42AtM1Qhg+EuAFKqNUWaQMUamCKiDsQdslQSFtCbf4+7sSdH/n1GSLtdVar3RlKXG0X9TCvUKRV5rlCLXvMMZS4PQB4jJmk1RuVx/zIyZ4A4trXYDcDpN3Fwsl3Aoj7DsLLQattTlovOZKHPQHEta/BRwZI+4HC3QtPv2AgOIgrCrSuBPTQ77Wug04eHHGdFVi/ZugspSbpaPv/3PZk1rkmA04eBHEdFTjirxjW4HsWOf0seffa0VirXUPc1SoeYL5J4O1RaSOzKPxuiPubg5s/terOul2ugbyVePt6T2adqxkrQl/EjVAlcswS2Eq8fS1591o2ULALiBusYKR7jcBW4u3rPZl17lpUP3fdEddP1pNnwna5X4G3Em9fS9691i+TusihxNVnPz3UdVOmNwQ+E9hKvH2dZP7cw/ZMKHFtUTH6igS2EnuaP+J6qsYmF+0stMPYnOIlBD4IIO4HiqoXdIbAUAKIOxQ3g0GgDQHEvchRv7lz8dZmt7FdboZyukBhxNXnPT3I01WACUGggEAYcQvmRhcfBMiiAwHEvQGV7fINWNzalQDidsVLcAj0IYC4F7hqpdVfxF+4tdst+ozfLTiBwxFA3Bslk7yS+EaXJrfypVwTjB6DFOeEuMXo6AgBOwIhxNU2cfVVR/MXB7tHhZE9EQghridgVttlTwzIxZ4A4p7UQJ9pJevJbVyGwFACC4g7lGfXwdgud8UbKjjiFpRLK7BW4oKudIFAEwKI2wQjQSAwloB7cfVNqraIY7H4HU0sxMRvhmQ2goB7cUdAyI2h7bC2xUfXc9dinCfLqAQQt7ByR0IXhqQbBC4TQNzLqPzcyHbZTy2sMkFcK/KMC4EKAohbAU/bZX0OrghR1ZUvqarwnXT2fdm1uHowtS20QGgp5JX5WnG5khv39CfgWtz+0z8eQSvq8R1chYANAcSt5C65rVZnrbralVROge4BCSBuwKKRMgRsxYU/BCBQRABxi7D92Ynt8p88+Kk/AcTdYazPrJJx5xKnIOCCgFtx9aWLvnxxQYkkIOCMgFtxnXE6TUcrtFbq0xuv3nDjPr3B6Y3uRhduDU4AcYMXkPTXJIC4a9Z96Kxff/77YEfQFjniPvHUdlfb3qfT7n9ku+y+RE0TRNyGOCW8xG8YklB7BDj3cCmutlVaQajPfQJid78XPaIRcCluNIhe8uXNzksl+ueBuI0Zs11uDJRwuwQQd4NFn08l3uZUuJdaddkuhyvb7YSz4t6ORAcIQGAYAcTtgFqrtlbvDqEJCYE3Au7E1TZP27237PijiID4iWNRZzqFIOBO3BDUSBICxgQQ970A2tpqi/v+4+HhykXFUswr93IPBO4SQNy7xILcz3Y5SKEK00TcQnB0g4AlAcTtSJ/tcke4i4dG3IkfAIvt8sQ4XU3Nlbj6Kww9bKMJ6UskrY6jx2U8CJQScCVu6SToB4HVCCBu54prJdeK3nmYbHjtYLSTyd7AhZAEEDdk2Ug6IoGWOSNuS5qOY7HqOi5OQWrLi6ttrLazBewud1F8jXO5Q+MbtV1uHJJwxgTciKsVgQfM+Glg+DAE3IgbhljQRPWmqDfHoOmT9hOB2cR9mp6fH623y35IkEkLAojbgiIxIDCYwNLiWn5hNLjOb8OxXX7DMMUfS4urCmoLq+OIprFWe7MYwXXFMVyIqy9NtBqsWICBc2aoiQi4EHcinu6nojdIvVG6T5QEDwkg7iGePhfZLvfhulJUxB1cbX3OHTwkw01IYFlxteqtKhHb5U8mhzuxrLjhKkXCENgQQNwNjFEvtdJrxa8dTzFKW+3Y9LclYC6uvuHU1s0Wg83opdKlfnoDqGk2s2bUFgTMxW0xiYgxaoRLfSPOm5zbEBgobpuEW0TRiqWHv0UsYkDAgsCS4lqAZkwItCSAuC1pEgsCgwgg7iDQDAOBlgRMxV35G+U/i8hPELhHwFTce6m2uZsvptpwJIotgeXEtcXN6BBoQwBx23AkCgSGEkDcobgZ7D4BeuwRQNw9KpyDgHMCZuLqG+XRbPhi6jPxly/fHjXtc0TOjCBgJq4mt+ovF2juHpr+2Wdtuyq9h/nOlIOpuDOBXHUud8RflVGPef8Wt0dkYkIAAt0IIG43tASGQD8Cy4jLF1P9HiIijyewjLjj0TIiBPoRMBE3/VWQVsG91m+6BZHpAgGHBEzEPfsmck/mdM4hQ1KCwHACJuKezfJI7CRw7ngWm+sQmIGAS3GPwB5JrWs5oXXtKC7XIBCJQDhxz+BK0L121o/rBQToYkZgOnHNSDIwBAYSQNyBsBkKAq0IIG4rksSBwEACiDsQNkMtRKDzVBG3M2DCQ6AHAcTtQZWYEOhMAHE7AyY8BHoQQNweVIkJgc4EQovbmQ3hIeCWAOK6LQ2JQSBPAHHzbLgCAbcEENdtaUgMAnkCiJtnE/oKyc9NAHHnri+zm5QA4k5aWKY1NwHEnbu+zG5SAog7aWGZVp7ADFcQd4YqMoflCCDuciVnwjMQQNwZqsgcliOAuMuVnAnPQKCXuDOwYQ4QcEsAcd2WhsQgkCeAuHk2XIGAWwKI67Y0JAaBPAHEzbPpdYW4EKgm8Cau/rOXtO8PGMAgwjMg6/8HAAD//0Bi6L8AAAAGSURBVAMALNyChUxyOtoAAAAASUVORK5CYII=';
+  function renderBrandLogo(className='brand-tile', alt='RapidFire logo'){ return `<span class="${className}"><img src="${BRAND_LOGO_DATA_URL}" alt="${escapeHTML(alt)}" draggable="false" /></span>`; }
+
+  const ICONS = {
+    user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0z"/></svg>',
+    like:'<svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z"/></svg>',
+    save:'<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg>',
+    share:'<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5M8 13l8 5"/></svg>',
+    comment:'<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.5-4.5A8.5 8.5 0 1 1 21 12Z"/></svg>',
+    info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7h.01"/></svg>',
+    fullscreen:'<svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>'
+  };
+
+  // ---------- production user/account + Firebase configuration ----------
+  const USER_SCHEMA_VERSION = 2;
+  const PROJECT_SCHEMA_VERSION = 3;
+  const FIREBASE_CONFIG = Object.freeze({
+    apiKey:'AIzaSyAQ3veQLlxdFv8wsOYI_UcCgANDZvuL-L0',
+    authDomain:'rapidfire-31bae.firebaseapp.com',
+    databaseURL:'https://rapidfire-31bae-default-rtdb.asia-southeast1.firebasedatabase.app',
+    projectId:'rapidfire-31bae',
+    storageBucket:'rapidfire-31bae.firebasestorage.app',
+    messagingSenderId:'852992171092',
+    appId:'1:852992171092:web:6582b1d1ac93c255c7a1c1',
+    measurementId:'G-ZTXBBKYGB2'
+  });
+  const MAXP_EMAIL='timmiballz22@gmail.com';
+  const USER_CAPABILITIES = Object.freeze({browse:true,publish:true,post:true,follow:true,like:true,save:true,share:true,comment:true,manageOwnProjects:true,editProfile:true});
+  const normalizeEmail = value => String(value || '').trim().toLowerCase();
+  const userIdFromHandle = handle => `user-${String(handle || 'user').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || 'user'}`;
+  const cleanHandle = value => String(value||'').trim().replace(/^@+/,'').replace(/\s+/g,'').replace(/[^A-Za-z0-9_.-]/g,'').slice(0,28) || 'User';
+  const formatCount = value => { const n=Number(value)||0; return n>=1e6?`${(n/1e6).toFixed(n>=1e7?0:1)}M`:n>=1e3?`${(n/1e3).toFixed(n>=1e4?0:1)}K`:String(n); };
+  function profileIdForFirebaseUser(firebaseUser){
+    return normalizeEmail(firebaseUser?.email)===MAXP_EMAIL&&firebaseUser?.emailVerified===true?'user-maxp':String(firebaseUser?.uid||'');
+  }
+  function normalizeUser(raw={}){
+    const handle=cleanHandle(raw.handle||raw.username||raw.displayName||raw.name||'User');
+    return {
+      schemaVersion:USER_SCHEMA_VERSION,
+      id:String(raw.id||userIdFromHandle(handle)),
+      authUid:String(raw.authUid||raw.auth?.providerUserId||''),
+      handle,
+      displayName:String(raw.displayName||raw.name||handle).trim().slice(0,50)||handle,
+      bio:String(raw.bio||'').slice(0,180),
+      avatarUrl:String(raw.avatarUrl||raw.picture||''),
+      stats:{followers:Number(raw.stats?.followers||0),following:Number(raw.stats?.following||0)},
+      capabilities:{...USER_CAPABILITIES,...(raw.capabilities||{})},
+      createdAt:raw.createdAt||Date.now(),
+      updatedAt:raw.updatedAt||Date.now()
+    };
+  }
+  const userRegistry=new Map();
+  function registerUser(raw={}){
+    const candidateId=String(raw.id||userIdFromHandle(raw.handle||raw.username||raw.displayName||raw.name||'User'));
+    const prior=userRegistry.get(candidateId)||null;
+    const mergedRaw=prior?{
+      ...prior,...raw,id:candidateId,
+      stats:{...prior.stats,...(raw.stats||{})},
+      capabilities:{...prior.capabilities,...(raw.capabilities||{})}
+    }:{...raw,id:candidateId};
+    const user=normalizeUser(mergedRaw);userRegistry.set(user.id,user);return user;
+  }
+  function findUserByHandle(handle){const key=String(handle||'').trim().replace(/^@+/,'').toLowerCase();return [...userRegistry.values()].find(user=>user.handle.toLowerCase()===key)||null;}
+  function ensureUserByHandle(handle,seed={}){return findUserByHandle(handle)||registerUser({...seed,id:seed.id||userIdFromHandle(handle),handle,displayName:seed.displayName||handle});}
+  function userAvatarHTML(user,className='avatar'){
+    const u=user||{};
+    return u.avatarUrl?`<span class="${className}"><img src="${escapeHTML(u.avatarUrl)}" alt="${escapeHTML(u.displayName||u.handle||'User')}" referrerpolicy="no-referrer"></span>`:`<span class="${className}" aria-hidden="true">${ICONS.user}</span>`;
+  }
+  const MAXP_USER=registerUser({id:'user-maxp',handle:'MaxP',displayName:'MaxP',bio:'Main developer',capabilities:USER_CAPABILITIES});
+  let currentUser=null,viewedProfileId=null,cloud=null,firebaseUser=null,presenceUnsub=null,followingUnsub=null;
+  const socialUnsubByArticle=new WeakMap();
+  let followingIds=new Set(),profileFollowers=[],profileFollowing=[],profilePosts=[],profileSavedIds=[],profilePresence={online:false};
+  let commentUnsub=null,activeCommentProjectId=null,activeComments=[];
+  const serviceAdapters={auth:null,users:null};
+  function configureServices(adapters={}){Object.assign(serviceAdapters,adapters);return {...serviceAdapters};}
+
+  function normalizeProject(raw){
+    const creatorSeed=String(raw.creator||raw.ownerHandle||'Unknown creator');
+    const owner=raw.isDefault?null:raw.ownerUserId?(userRegistry.get(String(raw.ownerUserId))||ensureUserByHandle(creatorSeed,{id:String(raw.ownerUserId)})):ensureUserByHandle(creatorSeed);
+    const sourceType=String(raw.sourceType||raw.type||'local');
+    return {
+      schemaVersion:PROJECT_SCHEMA_VERSION,
+      id:String(raw.id||`project-${Math.random().toString(36).slice(2,9)}`),ownerUserId:owner?.id||'',
+      isDefault:!!raw.isDefault,originalCreator:String(raw.originalCreator||''),sourceUrl:String(raw.sourceUrl||''),license:String(raw.license||''),licenseUrl:String(raw.licenseUrl||''),
+      title:String(raw.title||'Untitled Project'),creator:owner?.handle||'Project Embedded',desc:String(raw.desc||raw.description||'No description yet.'),
+      tags:Array.isArray(raw.tags)?raw.tags.map(String).slice(0,8):[],category:String(raw.category||'Project'),
+      views:String(raw.views??raw.viewCount??'0'),likes:String(raw.likes??raw.likeCount??'0'),saves:String(raw.saves??raw.saveCount??'0'),shares:String(raw.shares??raw.shareCount??''),comments:String(raw.comments??raw.commentCount??'0'),
+      thumbnailUrl:String(raw.thumbnailUrl||''),type:String(raw.type||'local'),sourceType,trend:!!raw.trend,local:!!raw.local,remote:!!raw.remote,
+      source:String(raw.source||''),sourceElementId:String(raw.sourceElementId||''),contentUrl:String(raw.contentUrl||''),storagePath:String(raw.storagePath||''),sourceVersion:String(raw.sourceVersion||(String(raw.contentUrl||'').startsWith('firestore:')?String(raw.contentUrl).split(':')[2]||'':'')),embedUrl:String(raw.embedUrl||''),
+      createdAt:raw.createdAt?.toMillis?raw.createdAt.toMillis():Number(raw.createdAt||Date.now())
+    };
+  }
+
+  function renderTags(tags=[]){
+    return tags.slice(0,3).map((tag,i)=>`<span class="tag ${i===0?'accent':''}">#${escapeHTML(String(tag).replace(/^#/,''))}</span>`).join('');
+  }
+  function embedHost(url){ try{ return new URL(url).host || 'external project'; }catch(_){ return 'external project'; } }
+  function renderHeader(project){
+    if(project.isDefault)return `<header class="creator-bar">${renderBrandLogo()}<span class="creator-identity"><span class="creator-name">Project Embedded</span><span class="creator-hint">${escapeHTML(project.originalCreator||'RapidFire starter')}</span></span><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
+    const owner=userRegistry.get(project.ownerUserId)||ensureUserByHandle(project.creator,{id:project.ownerUserId});
+    const suffix=project.local?'local publish':`${escapeHTML(project.views)} views`;
+    return `<header class="creator-bar">${renderBrandLogo()}<button class="creator-profile-hitbox" data-open-profile="${escapeHTML(project.ownerUserId)}" type="button" aria-label="Open ${escapeHTML(owner.handle)} profile">${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.displayName)}</span><span class="creator-hint">@${escapeHTML(owner.handle)}</span></span></button><button class="follow-btn" data-follow data-follow-user="${escapeHTML(project.ownerUserId)}">Follow</button><div class="creator-meta"><div class="project-title">${escapeHTML(project.title)} · ${suffix}</div><div class="tag-row">${renderTags(project.tags)}</div></div></header>`;
+  }
+  function refreshCreatorIdentities(){
+    $$('.project').forEach(article=>{const owner=userRegistry.get(article.dataset.ownerUserId),hit=$('[data-open-profile]',article);if(!owner||!hit)return;hit.innerHTML=`${userAvatarHTML(owner)}<span class="creator-identity"><span class="creator-name">${escapeHTML(owner.displayName)}</span><span class="creator-hint">@${escapeHTML(owner.handle)}</span></span>`;hit.setAttribute('aria-label',`Open ${owner.handle} profile`);});
+  }
+  function renderRail(project){
+    return `<div class="rail"><button class="rail-btn" data-like aria-label="Like">${ICONS.like}<span class="count" data-like-count>${escapeHTML(project.likes)}</span></button><button class="rail-btn" data-comment aria-label="Comments">${ICONS.comment}<span class="count" data-comment-count>0</span></button><button class="rail-btn" data-save aria-label="Save">${ICONS.save}<span class="count" data-save-count>${escapeHTML(project.saves)}</span></button><button class="rail-btn" data-share aria-label="Share">${ICONS.share}<span class="count" data-share-count>${escapeHTML(project.shares||'0')}</span></button><button class="rail-btn" data-info aria-label="Project details">${ICONS.info}</button><button class="rail-btn" data-fullscreen aria-label="Fullscreen">${ICONS.fullscreen}</button></div>`;
+  }
+  function renderGate(){
+    return `<button class="play-gate" data-play aria-label="Tap to play"><span class="play-gate-pill"><span class="play-gate-icon">▶</span><strong>Tap to play</strong><small>Project runs only after you tap</small></span></button><button class="leave-play" data-stop-play type="button">← Back to feed</button>`;
+  }
+  const BODY_RENDERERS = {
+    dash(){ return '<canvas class="dash-canvas" data-role="dash-canvas" aria-label="Interactive neon flying demo. Tap or press Space to boost."></canvas>'; },
+    science(){ return '<div class="science-card"><div class="science-stage" data-role="science-stage"><div class="science-controls"><label>Speed <input data-role="orbit-speed" type="range" min="2" max="14" value="7" /></label><label>Scale <input data-role="orbit-scale" type="range" min="70" max="125" value="100" /></label><button data-role="orbit-toggle" type="button">Pause orbit</button></div><div class="science-readout"><span class="science-chip">Inner: 1.0 AU</span><span class="science-chip">Outer: 1.7 AU</span><span class="science-chip" data-role="orbit-status">Simulation live</span></div><div class="orbit-center"></div><div class="orbit o1"><div class="planet"></div></div><div class="orbit o2"><div class="planet"></div></div></div></div>'; },
+    rizz(){ return '<div class="rizz-card"><div class="meter-wrap"><div class="meter-face" data-role="rizz-face">😎</div><div class="meter-track"><div class="meter-fill" data-role="rizz-fill"></div></div><div class="meter-score" data-role="rizz-score">67 aura</div><div class="meter-sub" data-role="rizz-best">Best this session: 67</div><button class="meter-btn" data-role="rizz-btn">ROLL AURA</button></div></div>'; },
+    pulse(){ return '<div class="project-app pulse-card"><div class="project-shell"><div class="project-kicker">Rhythm microgame</div><h2>Beat Burst</h2><p>Lock into the pulse. Tap when the orb peaks.</p><div class="pulse-stage"><div class="pulse-orb" data-role="pulse-orb">67</div><div class="pulse-feedback" data-role="pulse-feedback">Find the beat</div><button class="pulse-tap" data-role="pulse-btn">TAP / SPACE</button></div><div class="mini-stat-row"><span class="mini-stat" data-role="pulse-streak">Streak 0</span><span class="mini-stat" data-role="pulse-best">Best 0</span><span class="mini-stat">700 ms beat</span></div></div></div>'; },
+    reflex(){ return '<div class="project-app reflex-card"><div class="project-shell"><div class="project-kicker">Reaction challenge</div><h2>Reflex 67</h2><p>Wait for green. Tap too early and the run resets.</p><div class="reflex-stage"><button class="reflex-pad" data-role="reflex-pad">Start</button><div class="mini-stat-row"><span class="mini-stat" data-role="reflex-last">Last —</span><span class="mini-stat" data-role="reflex-best">Best —</span></div></div></div></div>'; },
+    color(){ return '<div class="project-app color-card"><div class="project-shell"><div class="project-kicker">Creative tool</div><h2>Color Forge</h2><p>Generate a five-color palette, tune it, and tap a swatch to copy its hex.</p><div class="color-grid"><div class="palette" data-role="palette"></div><div class="color-controls"><label>Hue <input data-role="color-h" type="range" min="0" max="359" value="28"></label><label>Energy <input data-role="color-s" type="range" min="35" max="95" value="78"></label><label>Light <input data-role="color-l" type="range" min="38" max="72" value="58"></label><div class="color-actions"><button class="project-action" data-role="color-random">Randomize</button><button class="project-action secondary" data-role="color-copy">Copy palette</button></div></div></div></div></div>'; },
+    memory(){ return '<div class="project-app memory-card"><div class="project-shell"><div class="project-kicker">Memory microgame</div><h2>Signal Stack</h2><p>Watch the sequence, then repeat it. Each round adds one signal.</p><div class="memory-wrap"><div class="memory-grid" data-role="memory-grid">'+Array.from({length:9},(_,i)=>`<button class="memory-cell" data-memory-cell="${i}" aria-label="Memory tile ${i+1}"></button>`).join('')+'</div><div class="memory-copy"><div class="mini-stat" data-role="memory-status">Ready</div><div class="mini-stat" data-role="memory-level">Level 0</div><div class="mini-stat" data-role="memory-best">Best 0</div><button class="project-action" data-role="memory-start">Start sequence</button></div></div></div></div>'; },
+    math(){ return '<div class="project-app math-card"><div class="project-shell"><div class="project-kicker">Fast learning game</div><h2>Math Rush</h2><p>Pick the answer. Questions speed up as your streak grows.</p><div class="math-stage"><div class="math-question" data-role="math-question">7 × 8</div><div class="math-answers" data-role="math-answers"></div><div class="mini-stat-row"><span class="mini-stat" data-role="math-score">Score 0</span><span class="mini-stat" data-role="math-streak">Streak 0</span><span class="mini-stat" data-role="math-best">Best 0</span></div></div></div></div>'; },
+    local(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · local HTML project</p></div></div>`; },
+    builtin(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads allow-same-origin" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · ${escapeHTML(project.creator)} project</p></div></div>`; },
+    remote(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads" allow="fullscreen; autoplay; gamepad" referrerpolicy="no-referrer" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · ${project.sourceType==='flash'?'Flash classic':'HTML project'}</p></div></div>`; },
+    embed(project){ return `<iframe title="${escapeHTML(project.title)}" loading="lazy" sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-downloads allow-same-origin" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write" referrerpolicy="strict-origin-when-cross-origin" src="about:blank"></iframe><div class="local-placeholder"><div>${renderBrandLogo('local-placeholder-mark')}<h3>${escapeHTML(project.title)}</h3><p>${escapeHTML(project.category)} · ${escapeHTML(embedHost(project.embedUrl))}</p></div></div>`; }
+  };
+  const PROJECT_HUD = {
+    dash:['FLIGHT','Tap / Space to boost'],pulse:['RHYTHM','Tap exactly on the beat'],reflex:['REFLEX','Wait for green'],
+    color:['TOOL','Tap swatches to copy'],science:['LAB','Tune the orbit'],memory:['MEMORY','Repeat the sequence'],
+    math:['SPRINT','Build a streak'],rizz:['AURA','Chase a new best'],local:['HTML','Sandboxed local runner'],builtin:['BUILT-IN','Hosted project · tap to load'],remote:['HTML','Published project · tap to load'],embed:['EMBED','External URL · tap to load']
+  };
+  function renderBody(project){ return (BODY_RENDERERS[project.type] || BODY_RENDERERS.local)(project)+(project.thumbnailUrl?`<img class="project-thumbnail" src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''); }
+  function renderThumbnail(project){return `<div class="thumb ${project.thumbnailUrl?'has-image':escapeHTML(project.type||'neon')}">${project.thumbnailUrl?`<img src="${escapeHTML(project.thumbnailUrl)}" alt="${escapeHTML(project.title)} thumbnail" loading="lazy"/>`:''}</div>`;}
+  function renderHud(project){ const label=project.sourceType==='flash'?['FLASH','Arrow keys / Space · tap to load']:PROJECT_HUD[project.type]; return label?`<div class="game-hud"><strong>${escapeHTML(label[0])}</strong><span>${escapeHTML(label[1])}</span></div>`:''; }
+  function projectArticle(project){
+    const article = document.createElement('article');
+    article.className = 'project';
+    article.dataset.projectId = project.id;
+    article.dataset.project = project.title;
+    article.dataset.creator = project.creator;
+    article.dataset.ownerUserId = project.ownerUserId;
+    article.dataset.desc = project.desc;
+    article.dataset.tags = project.tags.join(',');
+    article.dataset.category = project.category;
+    article.dataset.playState = 'gated';
+    if(project.local) article.dataset.localId = project.id;
+    const localClass = (project.type === 'local' || project.type === 'builtin' || project.type === 'remote' || project.type === 'embed') ? ' local-runner-field' : '';
+    const hud = renderHud(project);
+    const nextHint = project.type === 'dash' ? '<div class="next-hint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></div>' : '';
+    article.innerHTML = `${renderHeader(project)}<div class="playfield${localClass}"><div class="project-content">${renderBody(project)}</div>${hud}${nextHint}${renderGate()}${renderRail(project)}</div>`;
+    return article;
+  }
+
+  // ---------- project runtimes: one lifecycle contract for every project ----------
+  const runtimeByArticle = new WeakMap();
+  let activeProject = null;
+
+  function inertRuntime(){ return {start(){}, stop(){}, destroy(){}}; }
+
+  // Local projects stay sandboxed, but this tiny bridge lets Escape request a return to the feed.
+  const RUNNER_ESCAPE_BRIDGE = `<script>(()=>{addEventListener('keydown',e=>{if(e.key==='Escape')parent.postMessage({type:'rapidfire:escape'},'*')},true)})()<\/script>`;
+  function instrumentProjectHTML(source){
+    const html = String(source || '');
+    if(/<head(?:\s[^>]*)?>/i.test(html)) return html.replace(/<head(?:\s[^>]*)?>/i, match => `${match}${RUNNER_ESCAPE_BRIDGE}`);
+    if(/<html(?:\s[^>]*)?>/i.test(html)) return html.replace(/<html(?:\s[^>]*)?>/i, match => `${match}<head>${RUNNER_ESCAPE_BRIDGE}</head>`);
+    return `${RUNNER_ESCAPE_BRIDGE}${html}`;
+  }
+  function decodeEmbeddedProjectSource(elementId){
+    if(!elementId) return '';
+    const node = document.getElementById(elementId);
+    const b64 = node?.textContent?.replace(/\s+/g,'') || '';
+    if(!b64) return '';
+    try{
+      const binary = atob(b64), bytes = new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+      return new TextDecoder('utf-8').decode(bytes);
+    }catch(_){ return ''; }
+  }
+  function createLocalRuntime(article, project){
+    const field = $('.local-runner-field', article);
+    const frame = $('iframe', article);
+    let generation=0;
+    return {
+      async start(){
+        const run=++generation;
+        if(!frame) return;
+        if(project.contentUrl.startsWith('firestore:')){
+          try{const source=await cloud.getProjectHTML(project.contentUrl);if(run!==generation)return;frame.removeAttribute('src');frame.srcdoc=instrumentProjectHTML(source);field?.classList.add('is-loaded');}
+          catch(error){if(run===generation){setProjectPlaying(article,false);showToast(error?.message||'Could not load project. Try again.');}}
+          return;
+        }
+        if(project.contentUrl){ frame.removeAttribute('srcdoc'); frame.src=project.contentUrl; field?.classList.add('is-loaded'); return; }
+        const source = project.source || decodeEmbeddedProjectSource(project.sourceElementId);
+        if(!source) return;
+        frame.removeAttribute('src'); frame.srcdoc = instrumentProjectHTML(source); field?.classList.add('is-loaded');
+      },
+      stop(){ generation++;if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
+      destroy(){ this.stop(); }
+    };
+  }
+  function createEmbedRuntime(article, project){
+    const field = $('.local-runner-field', article);
+    const frame = $('iframe', article);
+    return {
+      start(){const url=normalizeEmbedUrl(project.embedUrl);if(!frame||!url){setProjectPlaying(article,false);showToast('This project needs a valid HTTP(S) URL.');return;} frame.removeAttribute('srcdoc'); frame.src = url; field?.classList.add('is-loaded'); },
+      stop(){ if(!frame) return; frame.removeAttribute('srcdoc'); frame.src = 'about:blank'; field?.classList.remove('is-loaded'); },
+      destroy(){ this.stop(); }
+    };
+  }
+  function createScienceRuntime(article){
+    const input=$('[data-role="orbit-speed"]',article),scale=$('[data-role="orbit-scale"]',article),toggle=$('[data-role="orbit-toggle"]',article),status=$('[data-role="orbit-status"]',article),o1=$('.o1',article),o2=$('.o2',article);let paused=false;
+    const applySpeed=()=>{const v=Number(input?.value||7);if(o1)o1.style.animationDuration=`${Math.max(2,16-v)}s`;if(o2)o2.style.animationDuration=`${Math.max(3,20-v)}s`;};
+    const applyScale=()=>{const v=Number(scale?.value||100)/100;if(o1){o1.style.width=`${230*v}px`;o1.style.height=`${120*v}px`;}if(o2){o2.style.width=`${390*v}px`;o2.style.height=`${210*v}px`;}};
+    const onToggle=()=>{paused=!paused;[o1,o2].forEach(o=>{if(o)o.style.animationPlayState=paused?'paused':'running';});if(toggle)toggle.textContent=paused?'Resume orbit':'Pause orbit';if(status)status.textContent=paused?'Simulation paused':'Simulation live';};
+    input?.addEventListener('input',applySpeed);scale?.addEventListener('input',applyScale);toggle?.addEventListener('click',onToggle);applySpeed();applyScale();
+    return {start(){if(!paused)[o1,o2].forEach(o=>{if(o)o.style.animationPlayState='running';});},stop(){[o1,o2].forEach(o=>{if(o)o.style.animationPlayState='paused';});},destroy(){input?.removeEventListener('input',applySpeed);scale?.removeEventListener('input',applyScale);toggle?.removeEventListener('click',onToggle);}};
+  }
+  function createRizzRuntime(article){
+    const btn=$('[data-role="rizz-btn"]',article),score=$('[data-role="rizz-score"]',article),fill=$('[data-role="rizz-fill"]',article),face=$('[data-role="rizz-face"]',article),bestEl=$('[data-role="rizz-best"]',article);let best=personalBest.get('rizz',67);if(bestEl)bestEl.textContent=`Best on this device: ${best}`;
+    const roll=()=>{if(article.dataset.playState!=='playing')return;const n=Math.max(0,Math.min(100,Math.round(((Math.random()+Math.random()+Math.random())/3)*112-6)));if(n>best){best=n;personalBest.set('rizz',best);}score.textContent=`${n} aura`;if(bestEl)bestEl.textContent=`Best on this device: ${best}`;fill.style.width=`${n}%`;face.textContent=n>90?'🗿':n>72?'😎':n>50?'🙂':n>25?'😐':'😭';face.style.transform='scale(1.12)';setTimeout(()=>face.style.transform='',160);};
+    btn?.addEventListener('click',roll);return {start(){},stop(){},destroy(){btn?.removeEventListener('click',roll);}};
+  }
+  function createPulseRuntime(article){
+    const orb=$('[data-role="pulse-orb"]',article),btn=$('[data-role="pulse-btn"]',article),feedback=$('[data-role="pulse-feedback"]',article),streakEl=$('[data-role="pulse-streak"]',article),bestEl=$('[data-role="pulse-best"]',article);let running=false,raf=0,start=0,streak=0,best=personalBest.get('pulse',0);const period=700;if(bestEl)bestEl.textContent=`Best ${best}`;
+    function paint(t){if(!running)return;if(!start)start=t;const phase=((t-start)%period)/period,closeness=1-Math.min(1,Math.abs(phase-.5)*2),scale=.78+closeness*.25;if(orb){orb.style.transform=`scale(${scale})`;orb.style.boxShadow=`0 0 0 ${Math.round(closeness*24)}px rgba(177,92,255,${.08+closeness*.16}),0 22px 60px rgba(0,0,0,.3)`;}raf=requestAnimationFrame(paint);}
+    function tap(){if(!running)return;const now=performance.now();if(!start)start=now;const phase=((now-start)%period)/period,delta=Math.abs(phase-.5)*period;let label='MISS',cls='miss';if(delta<70){label='PERFECT +2';streak+=2;cls='hit';}else if(delta<145){label='GOOD +1';streak+=1;cls='hit';}else streak=0;if(streak>best){best=streak;personalBest.set('pulse',best);}if(feedback)feedback.textContent=`${label} · ${Math.round(delta)} ms off`;if(streakEl)streakEl.textContent=`Streak ${streak}`;if(bestEl)bestEl.textContent=`Best ${best}`;orb?.classList.remove('hit','miss');orb?.classList.add(cls);setTimeout(()=>orb?.classList.remove(cls),150);}
+    const onKey=e=>{if(e.code==='Space'&&running){e.preventDefault();tap();}};btn?.addEventListener('click',tap);window.addEventListener('keydown',onKey);
+    return {start(){if(running)return;running=true;start=0;raf=requestAnimationFrame(paint);},stop(){running=false;cancelAnimationFrame(raf);if(orb){orb.style.transform='';orb.style.boxShadow='';}},destroy(){running=false;cancelAnimationFrame(raf);btn?.removeEventListener('click',tap);window.removeEventListener('keydown',onKey);}};
+  }
+  function createReflexRuntime(article){
+    const pad=$('[data-role="reflex-pad"]',article),lastEl=$('[data-role="reflex-last"]',article),bestEl=$('[data-role="reflex-best"]',article);let running=false,state='idle',timer=0,readyAt=0;const storedBest=personalBest.get('reflex',0);let best=storedBest>0?storedBest:Infinity;if(bestEl&&Number.isFinite(best))bestEl.textContent=`Best ${best} ms`;
+    function reset(label='Start'){clearTimeout(timer);state='idle';pad?.classList.remove('waiting','ready');if(pad)pad.textContent=label;}
+    function arm(){if(!running)return;clearTimeout(timer);state='waiting';pad?.classList.remove('ready');pad?.classList.add('waiting');pad.textContent='Wait…';timer=setTimeout(()=>{if(!running)return;state='ready';readyAt=performance.now();pad.classList.remove('waiting');pad.classList.add('ready');pad.textContent='TAP!';},850+Math.random()*1850);}
+    function press(){if(!running)return;if(state==='idle'){arm();return;}if(state==='waiting'){if(lastEl)lastEl.textContent='Too early';reset('Try again');return;}const ms=Math.round(performance.now()-readyAt);if(ms<best){best=ms;personalBest.set('reflex',best);}if(lastEl)lastEl.textContent=`Last ${ms} ms`;if(bestEl)bestEl.textContent=`Best ${best} ms`;reset(`${ms} ms · Again`);}
+    pad?.addEventListener('click',press);return {start(){running=true;reset('Start');},stop(){running=false;reset('Start');},destroy(){running=false;clearTimeout(timer);pad?.removeEventListener('click',press);}};
+  }
+  function hslToHex(h,s,l){s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));return '#'+[f(0),f(8),f(4)].map(v=>Math.round(255*v).toString(16).padStart(2,'0')).join('');}
+  function createColorRuntime(article){
+    const h=$('[data-role="color-h"]',article),sat=$('[data-role="color-s"]',article),light=$('[data-role="color-l"]',article),palette=$('[data-role="palette"]',article),randomBtn=$('[data-role="color-random"]',article),copyBtn=$('[data-role="color-copy"]',article);let colors=[];
+    function render(){const hv=Number(h?.value||28),sv=Number(sat?.value||78),lv=Number(light?.value||58);colors=[-52,-26,0,28,58].map((off,i)=>hslToHex((hv+off+360)%360,Math.max(28,sv-(i%2)*12),Math.max(28,Math.min(78,lv+(i-2)*6))));if(palette)palette.innerHTML=colors.map(c=>`<button class="swatch" data-color="${c}" style="background:${c}" aria-label="Copy ${c}"><span>${c}</span></button>`).join('');}
+    const onInput=()=>render(),randomize=()=>{if(h)h.value=String(Math.floor(Math.random()*360));if(sat)sat.value=String(55+Math.floor(Math.random()*36));if(light)light.value=String(46+Math.floor(Math.random()*18));render();};
+    async function copyText(text,msg){try{if(navigator.clipboard)await navigator.clipboard.writeText(text);showToast(msg);}catch(_){showToast(text);}}
+    const onPalette=e=>{const b=e.target.closest('[data-color]');if(b)copyText(b.dataset.color,`${b.dataset.color} copied`);};
+    h?.addEventListener('input',onInput);sat?.addEventListener('input',onInput);light?.addEventListener('input',onInput);randomBtn?.addEventListener('click',randomize);copyBtn?.addEventListener('click',()=>copyText(colors.join(', '),'Palette copied'));palette?.addEventListener('click',onPalette);render();
+    return {start(){},stop(){},destroy(){h?.removeEventListener('input',onInput);sat?.removeEventListener('input',onInput);light?.removeEventListener('input',onInput);randomBtn?.removeEventListener('click',randomize);palette?.removeEventListener('click',onPalette);}};
+  }
+  function createMemoryRuntime(article){
+    const grid=$('[data-role="memory-grid"]',article),startBtn=$('[data-role="memory-start"]',article),status=$('[data-role="memory-status"]',article),levelEl=$('[data-role="memory-level"]',article),bestEl=$('[data-role="memory-best"]',article);let running=false,sequence=[],inputIndex=0,locked=true,best=personalBest.get('memory',0),timeouts=[];if(bestEl)bestEl.textContent=`Best ${best}`;
+    const cells=()=>$$('[data-memory-cell]',grid);function later(fn,ms){const id=setTimeout(fn,ms);timeouts.push(id);return id;}function flash(index,delay=0){later(()=>{const c=cells()[index];c?.classList.add('flash');later(()=>c?.classList.remove('flash'),260);},delay);}function update(){if(levelEl)levelEl.textContent=`Level ${sequence.length}`;if(bestEl)bestEl.textContent=`Best ${best}`;}
+    function nextRound(){if(!running)return;locked=true;inputIndex=0;sequence.push(Math.floor(Math.random()*9));update();if(status)status.textContent='Watch';sequence.forEach((n,i)=>flash(n,360+i*420));later(()=>{if(!running)return;locked=false;if(status)status.textContent='Your turn';},420+sequence.length*420);}
+    function begin(){timeouts.forEach(clearTimeout);timeouts=[];sequence=[];update();nextRound();}
+    function onCell(e){const b=e.target.closest('[data-memory-cell]');if(!b||locked||!running)return;const n=Number(b.dataset.memoryCell);b.classList.add('flash');later(()=>b.classList.remove('flash'),120);if(n!==sequence[inputIndex]){if(sequence.length-1>best){best=sequence.length-1;personalBest.set('memory',best);}update();locked=true;if(status)status.textContent=`Missed · reached ${sequence.length}`;sequence=[];startBtn.textContent='Try again';return;}inputIndex++;if(inputIndex===sequence.length){if(sequence.length>best){best=sequence.length;personalBest.set('memory',best);}update();locked=true;if(status)status.textContent='Correct';later(nextRound,620);}}
+    const onStart=()=>{if(!running)return;startBtn.textContent='Restart';begin();};startBtn?.addEventListener('click',onStart);grid?.addEventListener('click',onCell);
+    return {start(){running=true;locked=true;if(status)status.textContent='Ready';},stop(){running=false;timeouts.forEach(clearTimeout);timeouts=[];locked=true;},destroy(){running=false;timeouts.forEach(clearTimeout);startBtn?.removeEventListener('click',onStart);grid?.removeEventListener('click',onCell);}};
+  }
+  function createMathRuntime(article){
+    const question=$('[data-role="math-question"]',article),answers=$('[data-role="math-answers"]',article),scoreEl=$('[data-role="math-score"]',article),streakEl=$('[data-role="math-streak"]',article),bestEl=$('[data-role="math-best"]',article);let running=false,correct=56,score=0,streak=0,best=personalBest.get('math',0);if(bestEl)bestEl.textContent=`Best ${best}`;
+    function next(){if(!running)return;const harder=streak>=4,a=2+Math.floor(Math.random()*(harder?18:10)),b=2+Math.floor(Math.random()*(harder?12:9)),op=Math.random()<.58?'×':'+';correct=op==='×'?a*b:a+b;if(question)question.textContent=`${a} ${op} ${b}`;const vals=new Set([correct]);while(vals.size<4){const delta=(Math.floor(Math.random()*9)+1)*(Math.random()<.5?-1:1);vals.add(Math.max(0,correct+delta));}const arr=[...vals].sort(()=>Math.random()-.5);if(answers)answers.innerHTML=arr.map(v=>`<button class="math-answer" data-answer="${v}">${v}</button>`).join('');}
+    function click(e){const b=e.target.closest('[data-answer]');if(!b||!running)return;const ok=Number(b.dataset.answer)===correct;b.classList.add(ok?'correct':'wrong');if(ok){score+=10+streak*2;streak++;if(streak>best){best=streak;personalBest.set('math',best);}}else{streak=0;score=Math.max(0,score-4);}if(scoreEl)scoreEl.textContent=`Score ${score}`;if(streakEl)streakEl.textContent=`Streak ${streak}`;if(bestEl)bestEl.textContent=`Best ${best}`;setTimeout(next,180);}
+    answers?.addEventListener('click',click);return {start(){running=true;next();},stop(){running=false;},destroy(){running=false;answers?.removeEventListener('click',click);}};
+  }
+  function createDashRuntime(article){
+    const canvas=$('[data-role="dash-canvas"]',article),ctx=canvas?.getContext('2d',{alpha:false});
+    if(!canvas||!ctx)return inertRuntime();
+    let W=1,H=1,dpr=1,last=0,world=0,raf=0,running=false,gameOver=false,runScore=0,best=personalBest.get('dash',0),particles=[];
+    const player={x:0,y:0,vy:0,r:16};
+    function reset(){world=0;runScore=0;gameOver=false;player.x=W*.27;player.y=H*.48;player.vy=0;particles=[];}
+    function resize(){const r=canvas.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,1.5);W=Math.max(1,r.width);H=Math.max(1,r.height);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);player.x=W*.27;if(!player.y||player.y>H-30)player.y=H*.48;drawFrame(0);}
+    function burst(){for(let i=0;i<8;i++)particles.push({x:player.x-10,y:player.y+(Math.random()-.5)*18,vx:-80-Math.random()*110,vy:(Math.random()-.5)*75,a:1,s:2+Math.random()*3});}
+    function boost(){if(!running)return;if(gameOver){reset();return;}player.vy=-Math.max(235,H*.44);burst();}
+    function onKey(e){if(e.code==='Space'&&running){e.preventDefault();boost();}}
+    function obstacle(index){
+      const spacing=Math.max(360,Math.min(500,W*.52)),x=W*.78+(index*spacing-(world%spacing)),gapH=Math.max(128,Math.min(210,H*.34));
+      const usable=Math.max(80,H-gapH-150),center=85+gapH/2+((Math.sin(index*1.73)*.5+.5)*usable);
+      return {x,center,gapH,w:48};
+    }
+    function collide(o){
+      if(o.x>player.x+player.r||o.x+o.w<player.x-player.r)return false;
+      const top=o.center-o.gapH/2,bottom=o.center+o.gapH/2;
+      return player.y-player.r<top||player.y+player.r>bottom;
+    }
+    function drawObstacle(o){
+      const top=o.center-o.gapH/2,bottom=o.center+o.gapH/2;
+      ctx.fillStyle='#15205a';ctx.strokeStyle='#20d9ff';ctx.lineWidth=3;
+      ctx.fillRect(o.x,0,o.w,Math.max(0,top));ctx.strokeRect(o.x,-2,o.w+2,Math.max(0,top)+2);
+      ctx.fillRect(o.x,bottom,o.w,Math.max(0,H-bottom-52));ctx.strokeRect(o.x,bottom,o.w+2,Math.max(0,H-bottom-52));
+      ctx.fillStyle='#8df6ff';ctx.fillRect(o.x-5,top-7,o.w+10,7);ctx.fillRect(o.x-5,bottom,o.w+10,7);
+    }
+    function drawFrame(dt){
+      if(running&&!gameOver){
+        const speed=Math.min(255,175+world*.004);world+=speed*dt;runScore=Math.floor(world/18);
+        player.vy+=Math.max(390,H*.76)*dt;player.y+=player.vy*dt;
+        if(player.y<player.r+8){player.y=player.r+8;player.vy=20;}
+        if(player.y>H-54-player.r){gameOver=true;if(runScore>best){best=runScore;personalBest.set('dash',best);}player.y=H-54-player.r;burst();}
+        const first=Math.floor(world/Math.max(360,Math.min(500,W*.52)));
+        for(let i=first;i<first+4;i++){const o=obstacle(i);if(collide(o)){gameOver=true;if(runScore>best){best=runScore;personalBest.set('dash',best);}burst();break;}}
+      }
+      ctx.fillStyle='#24104a';ctx.fillRect(0,0,W,H);
+      const starShift=(world*.12)%120;for(let i=0;i<Math.ceil(W/120)+2;i++){for(let j=0;j<4;j++){const x=i*120-starShift+(j%2)*26,y=48+j*(H*.14)+(i%3)*17;ctx.globalAlpha=.32+(j%2)*.18;ctx.fillStyle='#d7f6ff';ctx.fillRect(x,y,2+(j%2),2+(j%2));}}ctx.globalAlpha=1;
+      ctx.fillStyle='#34136b';for(let i=0;i<8;i++){const x=((i*190-world*.12)%(W+250))-125,h=75+(i%3)*52;ctx.beginPath();ctx.moveTo(x,H*.68);ctx.lineTo(x+95,H*.68-h);ctx.lineTo(x+190,H*.68);ctx.fill();}
+      ctx.fillStyle='#0c78a9';ctx.fillRect(0,H-52,W,52);ctx.fillStyle='#17d2ef';ctx.fillRect(0,H-52,W,5);
+      const spacing=Math.max(360,Math.min(500,W*.52)),first=Math.floor(world/spacing);for(let i=first;i<first+4;i++)drawObstacle(obstacle(i));
+      if(running&&!gameOver){particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.a-=dt*2;});particles=particles.filter(p=>p.a>0);}
+      particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.a);ctx.fillStyle='#ffad3d';ctx.beginPath();ctx.arc(p.x,p.y,p.s,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
+      ctx.save();ctx.translate(player.x,player.y);ctx.rotate(Math.max(-.48,Math.min(.62,player.vy/650)));ctx.fillStyle=gameOver?'#ff5b69':'#8af13c';ctx.beginPath();ctx.arc(0,0,player.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#08190d';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='#f2ffff';ctx.beginPath();ctx.arc(7,-5,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#0c2430';ctx.beginPath();ctx.arc(9,-5,2.4,0,Math.PI*2);ctx.fill();ctx.restore();
+      ctx.fillStyle='rgba(10,10,16,.62)';ctx.fillRect(16,58,126,49);ctx.fillStyle='#fff';ctx.font='800 13px system-ui';ctx.fillText(`SCORE ${runScore}`,28,79);ctx.fillStyle='#b9b9c2';ctx.font='700 10px system-ui';ctx.fillText(`BEST ${best}`,28,96);
+      if(gameOver){ctx.fillStyle='rgba(8,8,14,.48)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font=`900 ${Math.max(28,Math.min(46,W*.06))}px system-ui`;ctx.fillText('CRASHED',W/2,H*.45);ctx.fillStyle='#ffd08c';ctx.font='800 15px system-ui';ctx.fillText('Tap or Space to restart',W/2,H*.45+32);ctx.textAlign='start';}
+    }
+    function loop(t){if(!running)return;const dt=Math.min(.032,(t-last)/1000||0);last=t;drawFrame(dt);raf=requestAnimationFrame(loop);}
+    const ro=new ResizeObserver(resize);ro.observe(canvas);canvas.addEventListener('pointerdown',boost);window.addEventListener('keydown',onKey);resize();reset();
+    return {start(){if(running)return;running=true;last=0;raf=requestAnimationFrame(loop);},stop(){if(!running)return;running=false;cancelAnimationFrame(raf);last=0;drawFrame(0);},destroy(){running=false;cancelAnimationFrame(raf);ro.disconnect();canvas.removeEventListener('pointerdown',boost);window.removeEventListener('keydown',onKey);}};
+  }
+  const RUNTIME_FACTORIES={local:createLocalRuntime,builtin:createLocalRuntime,remote:createLocalRuntime,embed:createEmbedRuntime,dash:createDashRuntime,science:createScienceRuntime,rizz:createRizzRuntime,pulse:createPulseRuntime,reflex:createReflexRuntime,color:createColorRuntime,memory:createMemoryRuntime,math:createMathRuntime};
+  function createRuntime(article,project){const factory=RUNTIME_FACTORIES[project.type];return factory?factory(article,project):inertRuntime();}
+  function setProjectPlaying(article, shouldPlay){
+    if(!article) return;
+    if(shouldPlay){
+      if(activeProject && activeProject !== article) setProjectPlaying(activeProject,false);
+      activeProject = article; article.dataset.playState='playing'; runtimeByArticle.get(article)?.start();
+    }else{
+      runtimeByArticle.get(article)?.stop(); article.dataset.playState='gated'; if(activeProject===article) activeProject=null;
+    }
+  }
+  function stopActiveProject(){ if(activeProject) setProjectPlaying(activeProject,false); }
+
+  const feed = $('#feed');
+  function projectElements(){ return $$('.project', feed); }
+  function centeredProject(){
+    const projects = projectElements();
+    if(!projects.length) return null;
+    const root = feed.getBoundingClientRect();
+    const center = root.top + root.height / 2;
+    let best = projects[0], bestDistance = Infinity;
+    for(const project of projects){
+      const rect = project.getBoundingClientRect();
+      const distance = Math.abs((rect.top + rect.bottom) / 2 - center);
+      if(distance < bestDistance){ best = project; bestDistance = distance; }
+    }
+    return best;
+  }
+  function scrollToAdjacentProject(article, direction=1){
+    const projects = projectElements();
+    const index = projects.indexOf(article);
+    if(index < 0) return false;
+    const target = projects[index + (direction >= 0 ? 1 : -1)];
+    if(!target) return false;
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({behavior:smooth?'smooth':'auto', block:'start'});
+    return true;
+  }
+  let gatedWheelLock = false;
+  function onGatedFeedWheel(event){
+    if(Math.abs(event.deltaY) < 12) return;
+    const current = centeredProject();
+    if(!current || current.dataset.playState !== 'gated') return;
+    event.preventDefault();
+    if(gatedWheelLock) return;
+    gatedWheelLock = true;
+    scrollToAdjacentProject(current, event.deltaY > 0 ? 1 : -1);
+    setTimeout(()=>{ gatedWheelLock = false; }, 320);
+  }
+  feed.addEventListener('wheel', onGatedFeedWheel, {passive:false});
+
+  function stopProjectFromFrame(sourceWindow){
+    for(const article of projectElements()){
+      const frame = $('iframe', article);
+      if(frame?.contentWindow === sourceWindow){ setProjectPlaying(article,false); return true; }
+    }
+    return false;
+  }
+  window.addEventListener('message', event => {
+    if(event.data?.type === 'rapidfire:escape') stopProjectFromFrame(event.source);
+  });
+  const feedObserver = new IntersectionObserver(entries => {
+    for(const entry of entries){
+      if(entry.target===activeProject && (!entry.isIntersecting || entry.intersectionRatio<0.55)) setProjectPlaying(entry.target,false);
+    }
+  }, {root:feed, threshold:[0,0.25,0.55,0.85]});
+
+  const projectRegistry = new Map();
+  function mountProject(raw, {prepend=false}={}){
+    const project = normalizeProject(raw); projectRegistry.set(project.id, project);
+    const old = $(`.project[data-project-id="${CSS.escape(project.id)}"]`, feed);
+    if(old){ socialUnsubByArticle.get(old)?.(); feedObserver.unobserve(old); runtimeByArticle.get(old)?.destroy(); if(activeProject===old) activeProject=null; old.remove(); }
+    const article = projectArticle(project); prepend ? feed.prepend(article) : feed.append(article);
+    runtimeByArticle.set(article, createRuntime(article,project)); feedObserver.observe(article); bindProjectSocial(article,project); return article;
+  }
+
+  // ---------- feed data ----------
+  // Embedded from projects/defaults/catalog.json by scripts/sync-inline.mjs.
+  const defaultCatalog = /* DEFAULT_CATALOG_START */[{"id":"default-flxinvaders","title":"FlxInvaders","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Flx-Invaders","license":"MIT","licenseUrl":"projects/defaults/flxinvaders-LICENSE.txt","desc":"Defend against waves of pixel invaders. Arrow keys to move, Space to fire.","tags":["flash","arcade","space"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxinvaders.svg","contentUrl":"projects/defaults/flxinvaders.html","downloadUrl":"https://www.flixel.org/flxinvaders/FlxInvaders.swf","sha256":"562ddb1c28bc3ef838fd173ea232f3c2f4e3227e9eebe16965f83a32a1e1d95b"},{"id":"default-2048","title":"2048","originalCreator":"Gabriele Cirulli","sourceUrl":"https://github.com/gabrielecirulli/2048","license":"MIT","licenseUrl":"projects/defaults/2048-LICENSE.txt","desc":"Slide matching tiles together and work toward 2048. Use arrow keys or swipe.","tags":["puzzle","numbers","strategy"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/2048.svg","contentUrl":"projects/defaults/2048/index.html"},{"id":"default-fluid","title":"WebGL Fluid Simulation","originalCreator":"Pavel Dobryakov","sourceUrl":"https://github.com/PavelDoGreat/WebGL-Fluid-Simulation","license":"MIT","licenseUrl":"projects/defaults/fluid-LICENSE.txt","desc":"Paint swirling fluid with your pointer. Explore color, motion, and the simulation controls.","tags":["art","simulation","interactive"],"category":"Art","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/fluid.svg","contentUrl":"projects/defaults/fluid/index.html"},{"id":"default-mode","title":"Mode","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/Mode","license":"MIT","licenseUrl":"projects/defaults/mode-LICENSE.txt","desc":"Explore a destructible pixel platformer. Follow the on-screen keyboard controls.","tags":["flash","platformer","action"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/mode.svg","contentUrl":"projects/defaults/mode.html","downloadUrl":"https://www.adamatomic.com/mode/Mode.swf","sha256":"7a6cd90db357fd98201305da208ae94bdaacb43b1622cc0f8d48a87e4b9f8d2d"},{"id":"default-0hh1","title":"0h h1","originalCreator":"Martin Kool / Q42","sourceUrl":"https://github.com/florisluiten/0hh1","license":"MIT","licenseUrl":"projects/defaults/0hh1-LICENSE.txt","desc":"A little logic game: balance the red and blue tiles without triples. Tap tiles to change their color.","tags":["logic","puzzle","tiles"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/0hh1.svg","contentUrl":"projects/defaults/0hh1/index.html"},{"id":"default-astray","title":"Astray","originalCreator":"wwwtyro","sourceUrl":"https://github.com/wwwtyro/Astray","license":"Unlicense","licenseUrl":"projects/defaults/astray-LICENSE.txt","desc":"Guide a ball through an increasingly complex maze. Use the arrow keys.","tags":["maze","3d","physics"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/astray.svg","contentUrl":"projects/defaults/astray/index.html"},{"id":"default-flxteroids","title":"FlxTeroids","originalCreator":"Adam Saltsman","sourceUrl":"https://github.com/AdamAtomic/FlxTeroids","license":"MIT","licenseUrl":"projects/defaults/flxteroids-LICENSE.txt","desc":"Pilot a tiny ship through an asteroid field. Arrow keys to steer and thrust, Space to fire.","tags":["flash","arcade","asteroids"],"category":"Game","isDefault":true,"type":"remote","sourceType":"flash","embedUrl":"","thumbnailUrl":"projects/defaults/flxteroids.svg","contentUrl":"projects/defaults/flxteroids.html","downloadUrl":"https://www.flixel.org/flxteroids/FlxTeroids.swf","sha256":"7fe5f2abd50c32cd1d451d4e587223438b7d3a0166be9d6153143583e20a7cf3"},{"id":"default-hextris","title":"Hextris","originalCreator":"Logan Engstrom, Garrett Finucane, Noah Moroze, and Michael Yang","sourceUrl":"https://github.com/Hextris/hextris","license":"GPL-3.0-or-later","licenseUrl":"projects/defaults/hextris-LICENSE.txt","desc":"Rotate the hexagon to stack and match falling colors. Use Left/Right or tap the sides.","tags":["puzzle","arcade","reflex"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/hextris.svg","contentUrl":"projects/defaults/hextris/index.html"},{"id":"default-tetris","title":"Tetris","originalCreator":"Jake Gordon and contributors","sourceUrl":"https://github.com/jakesgordon/javascript-tetris","license":"MIT","licenseUrl":"projects/defaults/tetris/LICENSE","desc":"Stack falling blocks and complete lines. Space to start; arrow keys to move and rotate.","tags":["puzzle","arcade","blocks"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/tetris.svg","contentUrl":"projects/defaults/tetris/index.html"},{"id":"default-breakout","title":"Breakout","originalCreator":"Jake Gordon and contributors","sourceUrl":"https://github.com/jakesgordon/javascript-breakout","license":"MIT · sound assets CC BY-ND 2.0","licenseUrl":"projects/defaults/breakout/LICENSE","desc":"Clear the bricks with a bouncing ball. Space to start; arrow keys or touch to move the paddle.","tags":["arcade","physics","reflex"],"category":"Game","isDefault":true,"type":"remote","sourceType":"html","embedUrl":"","thumbnailUrl":"projects/defaults/breakout.svg","contentUrl":"projects/defaults/breakout/index.html"}]/* DEFAULT_CATALOG_END */;
+  const defaultProjects=defaultCatalog.map(p=>normalizeProject({...p,trend:true}));
+  const baseProjects = [
+    {id:'dash',title:'Sigma Geometry Dash',creator:'User67',desc:'A polished neon flight challenge with scoring, hazards and quick-restart arcade pacing. Tap or press Space to boost.',tags:['arcade','rhythm','skill'],category:'Game',views:'67M',likes:'6767',saves:'26767',shares:'67',type:'dash',trend:true},
+    {id:'pulse',title:'Beat Burst',creator:'BeatBox67',desc:'A one-button rhythm microgame. Feel the 700 ms pulse, tap at the peak, and build a precision streak.',tags:['rhythm','music','reaction'],category:'Game',views:'2.1M',likes:'94K',saves:'31K',shares:'1.2K',type:'pulse',trend:true},
+    {id:'reflex',title:'Reflex 67',creator:'TinyArcade',desc:'A clean reaction-time challenge: wait for green, tap instantly, and chase a lower personal best.',tags:['reaction','speed','challenge'],category:'Game',views:'980K',likes:'51K',saves:'18K',shares:'840',type:'reflex',trend:true},
+    {id:'color',title:'Color Forge',creator:'PixelMint',desc:'A compact palette generator for creators. Tune hue, energy and lightness, then copy individual colors or the whole palette.',tags:['design','color','tool'],category:'Art',views:'410K',likes:'28K',saves:'44K',shares:'510',type:'color',trend:false},
+    {id:'science',title:'Orbit Lab',creator:'NovaLab',desc:'An interactive orbital-motion sandbox. Adjust simulation speed and scale, pause the system, and compare two orbit paths.',tags:['science','simulation','education'],category:'Education',views:'328K',likes:'19K',saves:'12K',shares:'390',type:'science',trend:false},
+    {id:'memory',title:'Signal Stack',creator:'MindByte',desc:'A fast visual memory game. Watch the tile sequence and repeat it as the chain grows every round.',tags:['memory','puzzle','focus'],category:'Game',views:'1.4M',likes:'73K',saves:'26K',shares:'960',type:'memory',trend:true},
+    {id:'math',title:'Math Rush',creator:'TinyTools',desc:'Rapid-fire mental math with adaptive difficulty, streak scoring and instant answer feedback.',tags:['math','education','speed'],category:'Education',views:'760K',likes:'41K',saves:'21K',shares:'430',type:'math',trend:false},
+    {id:'rizz',title:'Skibidi Rizz Simulator',creator:'AuraFactory',desc:'A repeatable aura-roll simulator with a smoother probability curve and a session best to chase.',tags:['simulator','fun','random'],category:'Game',views:'4.2M',likes:'67K',saves:'13K',shares:'670',type:'rizz',trend:true}
+  ].map(p=>normalizeProject({...p,isDefault:true,originalCreator:'RapidFire',views:'0',likes:'0',saves:'0',shares:'0'}));
+  const builtInProjects = [
+    {id:'maxp-catstrike',title:'CatStrike: Global Offensive',ownerUserId:'user-maxp',creator:'MaxP',desc:'A full 3D tactical shooter project with multiple modes, weapon systems, bots, maps, HUD, audio and performance-focused rendering.',tags:['shooter','3d','tactical','fps'],category:'Game',views:'0',likes:'0',saves:'0',shares:'0',type:'builtin',sourceType:'builtin',trend:false,contentUrl:'projects/catstrike.html'},
+    {id:'maxp-killmark',title:'Killmark',ownerUserId:'user-maxp',creator:'MaxP',desc:'Story and arcade combat with Deathmatch, Team Deathmatch, Gun Game and Capture The Flag, plus bots, loadouts, drops and multi-path maps.',tags:['shooter','arcade','story','combat'],category:'Game',views:'0',likes:'0',saves:'0',shares:'0',type:'builtin',sourceType:'builtin',trend:false,contentUrl:'projects/killmark.html'},
+    {id:'maxp-minicraft',title:'Minicraft',ownerUserId:'user-maxp',creator:'MaxP',desc:'A first-person block-building and survival sandbox with inventory, chat, world interaction, resources and Minecraft-inspired systems.',tags:['sandbox','building','survival','voxel'],category:'Game',views:'0',likes:'0',saves:'0',shares:'0',type:'builtin',sourceType:'builtin',trend:false,contentUrl:'projects/minicraft.html'},
+    {id:'maxp-world-sandbox',title:'World Sandbox',ownerUserId:'user-maxp',creator:'MaxP',desc:'A full-world historical strategy sandbox with countries, cities, wars, armies, alliances, map tools and historical scenarios.',tags:['strategy','world','sandbox','history'],category:'Game',views:'0',likes:'0',saves:'0',shares:'0',type:'builtin',sourceType:'builtin',trend:false,contentUrl:'projects/world-sandbox.html'}
+  ].map(normalizeProject);
+  const storedProjects = safeStore.get('rapidfire.local.projects.v2', []).map(p=>normalizeProject({...p,ownerUserId:p.ownerUserId || (p.creator==='MrAura67'?MAXP_USER.id:undefined),creator:p.creator==='MrAura67'?'MaxP':p.creator,type:p.type||'local',local:true}));
+
+  // Search index stays separate from rendered feed so future backend results can drop in cleanly.
+  const items = [
+    ...defaultProjects.map(p=>({...p,projectId:p.id})),
+    ...builtInProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:'neon',sourceType:'builtin'})),
+    ...baseProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:p.type,trend:p.trend})),
+    ...storedProjects.map(p=>({...p,projectId:p.id,ownerUserId:p.ownerUserId,type:'neon',sourceType:p.type,localId:p.id}))
+  ];
+  function upsertSearchItem(project){
+    const idx=items.findIndex(i=>i.localId===project.id || (i.title===project.title && i.creator===project.creator));
+    const item={isDefault:project.isDefault,originalCreator:project.originalCreator,sourceUrl:project.sourceUrl,license:project.license,licenseUrl:project.licenseUrl,projectId:project.id,ownerUserId:project.ownerUserId,title:project.title,creator:project.creator,views:project.views||'0',likes:project.likes||'0',saves:project.saves||'0',shares:project.shares||'0',comments:project.comments||'0',desc:project.desc,tags:project.tags,category:project.category,type:'neon',trend:false,local:project.local,localId:project.local?project.id:'',sourceType:project.sourceType||project.type,contentUrl:project.contentUrl||'',storagePath:project.storagePath||'',embedUrl:project.embedUrl||'',thumbnailUrl:project.thumbnailUrl||'',createdAt:project.createdAt};
+    idx>=0 ? items.splice(idx,1,item) : items.unshift(item);
+  }
+  async function removeLocalProject(projectId,{skipConfirm=false}={}){
+    const project=projectRegistry.get(projectId);if(!project?.local)return false;
+    if(!skipConfirm&&!await confirmAction(`Delete "${project.title}"? This removes the local published copy.`))return false;
+    const article=$(`.project[data-project-id="${CSS.escape(projectId)}"]`,feed);
+    if(article){socialUnsubByArticle.get(article)?.();if(activeProject===article)setProjectPlaying(article,false);feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}
+    projectRegistry.delete(projectId);const index=items.findIndex(i=>i.localId===projectId);if(index>=0)items.splice(index,1);
+    safeStore.set('rapidfire.local.projects.v2',safeStore.get('rapidfire.local.projects.v2',[]).filter(p=>p.id!==projectId));
+    renderSearch($('#searchInput')?.value||'');if(currentUser){renderProfile();renderProfileTab('projects');}showToast(`${project.title} deleted`);return true;
+  }
+
+  storedProjects.forEach(p=>mountProject(p));
+  defaultProjects.forEach(p=>mountProject(p));
+  builtInProjects.forEach(p=>mountProject(p));
+  baseProjects.forEach(p=>mountProject(p));
+  queueMicrotask(()=>{const wanted=new URL(location.href).searchParams.get('project');if(wanted)openProjectById(wanted);});
+
+  // ---------- navigation ----------
+  const screens = Object.fromEntries($$('.screen').map(s=>[s.dataset.screen,s]));
+  function go(screen){
+    if(activeCommentProjectId)closeComments();
+    if(screen!=='home'){stopActiveProject();clearProfileSubscriptions();}
+    Object.entries(screens).forEach(([key,el])=>el.classList.toggle('active',key===screen));
+    $$('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===screen));
+    if(screen==='search') setTimeout(()=>$('#searchInput').focus(),80);
+  }
+  $$('[data-nav]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.dataset.nav==='add')openPublish();else if(btn.dataset.nav==='profile')openProfile(currentUser?.id||null);else go(btn.dataset.nav);}));
+
+  // ---------- shared feed controls (single delegated listener) ----------
+  const infoSheet = $('#infoSheet');
+  function openInfo(projectEl){
+    if(!projectEl) return; const tags=(projectEl.dataset.tags||'').split(',').map(t=>t.trim()).filter(Boolean);
+    const project=projectRegistry.get(projectEl.dataset.projectId);
+    $('#infoTitle').textContent=projectEl.dataset.project||'Project'; $('#infoCreator').textContent=`by ${projectEl.dataset.creator||'Unknown creator'}`; $('#infoDescription').textContent=projectEl.dataset.desc||'No description yet.';
+    $('#infoTags').innerHTML=tags.map((t,i)=>`<span class="tag ${i===0?'accent':''}">#${escapeHTML(t.replace(/^#/,''))}</span>`).join(''); $('#infoExtra').textContent=projectEl.dataset.category||'RapidFire project';
+    if(project?.isDefault){
+      $('#infoCreator').textContent=project.originalCreator?`Created by ${project.originalCreator} · Project Embedded`:'Project Embedded';
+      const extra=$('#infoExtra');extra.textContent=`${project.category} · ${project.license||'RapidFire starter'}`;
+      for(const [label,url] of [['Original source',project.sourceUrl],['License',project.licenseUrl]]){
+        if(!url)continue;const target=new URL(url,location.href);if(!['https:','http:'].includes(target.protocol))continue;
+        const link=document.createElement('a');link.textContent=label;link.href=target.href;link.target='_blank';link.rel='noopener noreferrer';link.style.cssText='color:var(--accent);margin-left:16px';extra.append(link);
+      }
+    }
+    infoSheet.classList.add('open'); infoSheet.setAttribute('aria-hidden','false');
+  }
+  function closeInfo(){ infoSheet.classList.remove('open'); infoSheet.setAttribute('aria-hidden','true'); }
+  $('#closeInfo').addEventListener('click',closeInfo); infoSheet.addEventListener('click',e=>{if(e.target===infoSheet) closeInfo();});
+
+  let lastCloudErrorKey='';
+  function cloudErrorMessage(scope,error){
+    const code=String(error?.code||'').toLowerCase(),message=String(error?.message||'');
+    if(code.includes('permission-denied')||code.includes('permission_denied')||/permission denied|insufficient permissions/i.test(message)) return `${scope} blocked by Firebase rules`;
+    if(code.includes('unauthorized-domain')) return 'This domain is not authorized for Google sign-in';
+    if(code.includes('network')||/network|offline|failed to fetch/i.test(message)) return `${scope} is offline`;
+    return `${scope} failed`;
+  }
+  function reportCloudError(scope,error,{toastUser=false}={}){
+    console.warn(`[RapidFire:${scope}]`,error);
+    const message=cloudErrorMessage(scope,error),key=`${scope}:${error?.code||error?.message||message}`;
+    const indicator=$('#syncIndicator');if(indicator){indicator.textContent=message;indicator.classList.remove('online');indicator.classList.add('error');}
+    if(toastUser&&key!==lastCloudErrorKey){lastCloudErrorKey=key;showToast(message);}
+  }
+  function queueSocialSurfaceRefresh(){
+    if(queueSocialSurfaceRefresh.pending)return;queueSocialSurfaceRefresh.pending=true;
+    requestAnimationFrame(()=>{queueSocialSurfaceRefresh.pending=false;if(screens.search?.classList.contains('active'))renderSearch($('#searchInput')?.value||'');if(screens.profile?.classList.contains('active')&&['projects','saved'].includes(activeProfileTab))renderProfileTab(activeProfileTab);});
+  }
+
+  let fullscreenProject = null;
+  let intentionalFullscreenExit = false;
+  document.addEventListener('fullscreenchange',()=>{
+    if(document.fullscreenElement){
+      const project = document.fullscreenElement.closest?.('.project');
+      if(project) fullscreenProject = project;
+      return;
+    }
+    if(!fullscreenProject) return;
+    const project = fullscreenProject;
+    fullscreenProject = null;
+    if(intentionalFullscreenExit){ intentionalFullscreenExit = false; return; }
+    setProjectPlaying(project,false);
+  });
+
+  document.addEventListener('click', async e=>{
+    const profileHit=e.target.closest('[data-open-profile]'); if(profileHit){ openProfile(profileHit.dataset.openProfile); return; }
+    const play=e.target.closest('[data-play]'); if(play){ setProjectPlaying(play.closest('.project'),true); return; }
+    const stop=e.target.closest('[data-stop-play]'); if(stop){ setProjectPlaying(stop.closest('.project'),false); return; }
+    const follow=e.target.closest('[data-follow]'); if(follow){
+      const target=follow.dataset.followUser;if(!currentUser){showToast('Sign in to follow creators');return;}if(target===currentUser.id){showToast('This is your profile');return;}if(!cloud){showToast('Social service is offline');return;}
+      if(follow.disabled)return;follow.disabled=true;follow.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,target);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{follow.classList.remove('social-pending');refreshFollowButtons();}return;
+    }
+    const like=e.target.closest('[data-like]'); if(like){await runProjectSocialAction(like,'likes');return;}
+    const save=e.target.closest('[data-save]'); if(save){await runProjectSocialAction(save,'saves');return;}
+    const info=e.target.closest('[data-info]'); if(info){ openInfo(info.closest('.project')); return; }
+    const comment=e.target.closest('[data-comment]'); if(comment){ openComments(comment.closest('.project')?.dataset.projectId||''); return; }
+    const share=e.target.closest('[data-share]'); if(share){
+      const article=share.closest('.project'),title=article?.dataset.project||'RapidFire project',projectId=article?.dataset.projectId||'';
+      const url=new URL(location.href);url.searchParams.set('project',projectId);
+      let shared=false;
+      try{if(navigator.share)await navigator.share({title,text:`Check out ${title} on RapidFire`,url:url.href});else if(navigator.clipboard){await navigator.clipboard.writeText(url.href);showToast('Project link copied');}else showToast('Share ready');shared=true;}
+      catch(err){if(String(err?.name||'')!=='AbortError')showToast('Could not share this project');return;}
+      if(shared&&currentUser&&cloud){try{await cloud.markShared(projectId,currentUser.id);}catch(err){reportCloudError('Share count',err,{toastUser:true});}}
+      return;
+    }
+    const fullscreen=e.target.closest('[data-fullscreen]'); if(fullscreen){ const field=fullscreen.closest('.playfield'), project=fullscreen.closest('.project'); try{ if(document.fullscreenElement){ intentionalFullscreenExit=true; await document.exitFullscreen(); } else if(field?.requestFullscreen){ fullscreenProject=project; await field.requestFullscreen(); } else showToast('Fullscreen is not available here'); }catch(_){fullscreenProject=null;intentionalFullscreenExit=false;showToast('Fullscreen request was blocked');} }
+  });
+
+  function bindProjectSocial(article,project){
+    socialUnsubByArticle.get(article)?.();
+    if(!cloud||!article?.isConnected)return;
+    const unsub=cloud.subscribeProjectSocial(project.id,currentUser?.id||'',state=>{
+      const like=$('[data-like]',article),save=$('[data-save]',article);
+      like?.classList.toggle('liked',!!state.liked);save?.classList.toggle('saved',!!state.saved);
+      const lc=$('[data-like-count]',article),sc=$('[data-save-count]',article),sh=$('[data-share-count]',article),cc=$('[data-comment-count]',article);
+      if(lc)lc.textContent=formatCount(state.likes);if(sc)sc.textContent=formatCount(state.saves);if(sh)sh.textContent=formatCount(state.shares);if(cc)cc.textContent=formatCount(state.comments);
+      project.likes=String(state.likes);project.saves=String(state.saves);project.shares=String(state.shares);project.comments=String(state.comments);
+      const item=items.find(i=>(i.projectId||i.localId)===project.id);if(item){item.likes=project.likes;item.saves=project.saves;item.shares=project.shares;item.comments=project.comments;}
+      queueSocialSurfaceRefresh();
+    },err=>reportCloudError('Social sync',err));
+    socialUnsubByArticle.set(article,unsub);
+  }
+  function rebindAllProjectSocial(){for(const article of projectElements()){const p=projectRegistry.get(article.dataset.projectId);if(p)bindProjectSocial(article,p);}}
+  async function runProjectSocialAction(button,kind){
+    if(!currentUser){showToast(`Sign in to ${kind==='likes'?'like':'save'} projects`);return;}if(!cloud){showToast('Social service is offline');return;}
+    const article=button.closest('.project'),projectId=article?.dataset.projectId;if(!projectId)return;
+    if(button.disabled)return;button.disabled=true;button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');button.disabled=false;}
+  }
+
+  // ---------- search ----------
+  let recentSearches=safeStore.get('rapidfire.recent.v2',['FlxInvaders','2048','WebGL Fluid Simulation','Astray']);
+  const searchContent=$('#searchContent');
+  function addRecent(value){const v=String(value||'').trim();if(!v)return;recentSearches=[v,...recentSearches.filter(x=>x.toLowerCase()!==v.toLowerCase())].slice(0,5);safeStore.set('rapidfire.recent.v2',recentSearches);}
+  function suggestionRow(text,kind){return `<button class="suggestion" data-query="${escapeHTML(text)}"><span class="trend" style="color:${kind==='trend'?'var(--accent)':'#a7a7ad'}">${kind==='trend'?'🔥':'⌕'}</span><span>${escapeHTML(text)}</span></button>`;}
+  function renderSearch(query=''){
+    const q=query.trim().toLowerCase().replace(/^@+/,'');
+    if(!q){const recentHTML=recentSearches.length?recentSearches.map(x=>suggestionRow(x,'recent')).join(''):'<div class="empty" style="height:auto;padding:18px">No recent searches.</div>';const trendingHTML=items.filter(i=>i.trend).map(i=>suggestionRow(i.title,'trend')).join('');searchContent.innerHTML=`<div class="search-section-head"><span>Recently searched</span><button class="tiny-action" id="clearRecent">Clear</button></div>${recentHTML}<div class="search-section-head"><span>Trending</span></div>${trendingHTML}`;$$('.suggestion',searchContent).forEach(b=>b.addEventListener('click',()=>{addRecent(b.dataset.query);$('#searchInput').value=b.dataset.query;renderSearch(b.dataset.query);}));$('#clearRecent')?.addEventListener('click',()=>{recentSearches=[];safeStore.set('rapidfire.recent.v2',recentSearches);renderSearch();});return;}
+    const users=[...userRegistry.values()].filter(u=>[u.handle,u.displayName,u.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
+    const result=items.filter(i=>[i.title,i.creator,i.originalCreator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
+    const userHTML=users.length?`<div class="section-label">People</div>${users.map(u=>`<button class="user-result-card" data-user-result="${escapeHTML(u.id)}">${userAvatarHTML(u)}<span class="user-result-copy"><strong>${escapeHTML(u.displayName)}</strong><span>@${escapeHTML(u.handle)}${u.bio?` · ${escapeHTML(u.bio)}`:''}</span></span></button>`).join('')}`:'';
+    const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}">${renderThumbnail(i)}<div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
+    if(!userHTML&&!projectsHTML){searchContent.innerHTML='<div class="empty">No people or projects found.<br/>Try a title, creator, category or tag.</div>';return;}
+    searchContent.innerHTML=userHTML+projectsHTML;
+    $$('[data-user-result]',searchContent).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.userResult)));
+    $$('.result-card',searchContent).forEach(b=>b.addEventListener('click',()=>{addRecent(b.dataset.title);openProjectFromSearch(b.dataset.title);}));
+  }
+  function openProjectFromSearch(title){const target=$(`.project[data-project="${CSS.escape(title)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast(`${title} is listed, but its playable preview is not loaded yet`);}
+  $('#searchInput').addEventListener('input',e=>renderSearch(e.target.value)); $('#searchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addRecent(e.currentTarget.value);renderSearch(e.currentTarget.value);}}); renderSearch();
+
+
+  // ---------- project comments: modal right sidebar ----------
+  const commentsModal=$('#commentsModal'),commentsList=$('#commentsList'),commentText=$('#commentText'),commentSubmit=$('#commentSubmit'),commentAuthHint=$('#commentAuthHint'),commentsTitle=$('#commentsTitle');
+  const commentDrafts=new Map(),commentPending=new Set();
+  let commentsGeneration=0,commentsState='idle',commentsError='',commentTrigger=null;
+  function closeComments(){
+    if(activeCommentProjectId)commentDrafts.set(activeCommentProjectId,commentText.value);
+    commentsGeneration++;commentUnsub?.();commentUnsub=null;activeCommentProjectId=null;activeComments=[];
+    commentsModal.classList.remove('open');commentsModal.setAttribute('aria-hidden','true');$('#app').inert=false;
+    if(commentTrigger?.isConnected)commentTrigger.focus({preventScroll:true});commentTrigger=null;
+  }
+  function commentAuthor(comment){return userRegistry.get(String(comment.authorProfileId))||normalizeUser({id:String(comment.authorProfileId),handle:String(comment.authorProfileId||'User'),displayName:String(comment.authorProfileId||'User')});}
+  function renderComments(){
+    const project=projectById(activeCommentProjectId)||projectRegistry.get(activeCommentProjectId);
+    commentsTitle.textContent=project?'Comments · '+project.title:'Comments';
+    commentsList.setAttribute('aria-busy',String(commentsState==='loading'));
+    commentsList.innerHTML=commentsState==='loading'?'<div class="empty-compact" role="status">Loading comments…</div>':commentsState==='error'?'<div class="empty-compact" role="alert">'+escapeHTML(commentsError)+'<br><button class="mini-btn" id="retryComments" type="button">Retry comments</button></div>':activeComments.length?activeComments.map(c=>{
+      const author=commentAuthor(c),own=currentUser?.id===author.id;
+      return '<article class="comment-row" data-comment-id="'+escapeHTML(c.id)+'"><button class="comment-author" type="button" data-comment-profile="'+escapeHTML(author.id)+'">'+userAvatarHTML(author,'comment-avatar')+'<span><strong>'+escapeHTML(author.displayName)+'</strong><small>@'+escapeHTML(author.handle)+' · '+escapeHTML(formatTime(c.at))+'</small></span></button>'+(own?'<button class="comment-delete" type="button" data-delete-comment="'+escapeHTML(c.id)+'" aria-label="Delete comment">Delete</button>':'')+'<p>'+escapeHTML(c.text)+'</p></article>';
+    }).join(''):'<div class="empty-compact">No comments yet. Start the conversation.</div>';
+    const signedIn=!!currentUser,pending=commentPending.has(activeCommentProjectId);
+    commentText.disabled=!signedIn;commentSubmit.disabled=!signedIn||pending;commentSubmit.textContent=pending?'Posting…':'Comment';
+    commentAuthHint.innerHTML=signedIn?'Commenting as <strong>@'+escapeHTML(currentUser.handle)+'</strong>':'<button class="mini-btn" id="commentSignInBtn" type="button">Sign in to comment</button>';
+    $('#commentSignInBtn')?.addEventListener('click',signInWithGoogle);$('#retryComments')?.addEventListener('click',subscribeComments);
+    $$('[data-comment-profile]',commentsList).forEach(b=>b.addEventListener('click',()=>{closeComments();openProfile(b.dataset.commentProfile);}));
+    $$('[data-delete-comment]',commentsList).forEach(b=>b.addEventListener('click',()=>deleteComment(b.dataset.deleteComment)));
+  }
+  function subscribeComments(){
+    commentUnsub?.();commentUnsub=null;const projectId=activeCommentProjectId,generation=++commentsGeneration;
+    if(!cloud){commentsState='error';commentsError='Comments are offline. Reconnect and retry.';renderComments();return;}
+    commentsState='loading';renderComments();
+    commentUnsub=cloud.subscribeProjectComments(projectId,comments=>{
+      if(generation!==commentsGeneration||projectId!==activeCommentProjectId)return;
+      commentsState='ready';activeComments=comments;renderComments();
+    },error=>{if(generation!==commentsGeneration)return;commentsState='error';commentsError=cloudErrorMessage('Comments',error)+'. Retry when the connection is ready.';renderComments();});
+  }
+  function openComments(projectId){
+    if(!projectId)return;if(activeCommentProjectId)commentDrafts.set(activeCommentProjectId,commentText.value);else commentTrigger=document.activeElement;
+    stopActiveProject();activeCommentProjectId=projectId;activeComments=[];commentText.value=commentDrafts.get(projectId)||'';
+    commentsModal.classList.add('open');commentsModal.setAttribute('aria-hidden','false');$('#app').inert=true;subscribeComments();$('#closeComments').focus({preventScroll:true});
+  }
+  async function submitComment(){
+    const projectId=activeCommentProjectId,authorId=currentUser?.id,text=commentText.value.trim();
+    if(!authorId)return signInWithGoogle();if(!can('comment'))return showToast('Commenting is unavailable for this account');
+    if(!cloud||!projectId)return showToast('Comments service is offline');if(!text)return showToast('Write a comment first');if(commentPending.has(projectId))return;
+    commentPending.add(projectId);renderComments();
+    try{await cloud.createComment(projectId,authorId,text);if(commentDrafts.get(projectId)?.trim()===text)commentDrafts.delete(projectId);if(activeCommentProjectId===projectId&&commentText.value.trim()===text)commentText.value='';showToast('Comment posted');}
+    catch(error){reportCloudError('Comment publish',error,{toastUser:true});}
+    finally{commentPending.delete(projectId);if(activeCommentProjectId)renderComments();}
+  }
+  async function deleteComment(commentId){
+    const projectId=activeCommentProjectId,authorId=currentUser?.id;if(!authorId||!cloud||!projectId)return;
+    if(!await confirmAction('Delete this comment?')||currentUser?.id!==authorId)return;
+    try{await cloud.deleteComment(projectId,commentId);}catch(error){reportCloudError('Comment delete',error,{toastUser:true});}
+  }
+  $('#closeComments').addEventListener('click',closeComments);commentsModal.addEventListener('click',e=>{if(e.target===commentsModal)closeComments();});
+  commentsModal.addEventListener('keydown',e=>{
+    if(e.key!=='Tab')return;
+    const controls=$$('button:not(:disabled),textarea:not(:disabled),a[href]',commentsModal).filter(el=>el.getClientRects().length),first=controls[0],last=controls.at(-1);
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
+  });
+  commentSubmit.addEventListener('click',submitComment);commentText.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();submitComment();}});
+
+  // ---------- profile / authenticated social session ----------
+  let activeProfileTab='projects',profileSortNewest=true,postComposerOpen=false;
+  let profileUnsubs=[];
+  const signInBtn=$('#signInBtn'),profileCard=$('#profileCard'),profilePanel=$('#profilePanel'),profileActions=$('#profileActions'),profileAvatar=$('#profileAvatar');
+  function can(action){return !!currentUser?.capabilities?.[action];}
+  function viewedUser(){return viewedProfileId?userRegistry.get(viewedProfileId)||null:currentUser;}
+  function clearProfileSubscriptions(){profileUnsubs.forEach(fn=>{try{fn?.();}catch(_){}});profileUnsubs=[];profileFollowers=[];profileFollowing=[];profilePosts=[];profileSavedIds=[];profilePresence={online:false};}
+  function openProfile(profileId=null){viewedProfileId=profileId||currentUser?.id||null;go('profile');renderProfile();subscribeViewedProfile();}
+  function renderProfileAvatar(user){profileAvatar.innerHTML=user?.avatarUrl?`<img src="${escapeHTML(user.avatarUrl)}" alt="${escapeHTML(user.displayName)}" referrerpolicy="no-referrer">`:ICONS.user;}
+  function refreshFollowButtons(){
+    $$('[data-follow-user]').forEach(btn=>{const target=btn.dataset.followUser,own=!!currentUser&&target===currentUser.id,on=followingIds.has(target);btn.disabled=own||btn.classList.contains('social-pending');btn.classList.toggle('following',!own&&on);btn.textContent=own?'You':on?'Following':'Follow';});
+    const profileFollow=$('[data-profile-follow]');if(profileFollow){const target=profileFollow.dataset.profileFollow,on=followingIds.has(target);profileFollow.classList.toggle('following',on);profileFollow.textContent=on?'Following':'Follow';}
+  }
+  function renderProfile(){
+    const user=viewedUser();const isOwn=!!user&&!!currentUser&&user.id===currentUser.id;
+    renderProfileAvatar(user);
+    if(!user){profileCard.innerHTML='<h1>Guest</h1><p>Sign in with Google to publish, post, follow, like and save projects.</p>';profileActions.innerHTML='<button class="google-btn" id="signInBtnDynamic"><span class="g-mark">G</span><span>Sign in with Google</span></button>';profilePanel.innerHTML='<div class="empty" style="height:180px">Your RapidFire profile appears here after sign-in.</div>';$('#profileTabs').hidden=true;$('#signInBtnDynamic')?.addEventListener('click',signInWithGoogle);return;}
+    $('#profileTabs').hidden=false;
+    const followers=profileFollowers.length,following=profileFollowing.length,projectCount=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId)).length;
+    profileCard.innerHTML=`<h1>${escapeHTML(user.displayName)}</h1><div class="handle">@${escapeHTML(user.handle)}</div><p>${followers} followers · ${following} following · ${projectCount} project${projectCount===1?'':'s'}</p>${user.bio?`<div class="bio">${escapeHTML(user.bio)}</div>`:''}<div class="presence ${profilePresence.online?'':'offline'}">${profilePresence.online?'● Online':'○ Offline'}</div>`;
+    if(isOwn)profileActions.innerHTML='<button class="mini-btn" id="editProfileBtn">Edit profile</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>';
+    else if(currentUser)profileActions.innerHTML=`<button class="mini-btn" data-profile-follow="${escapeHTML(user.id)}">${followingIds.has(user.id)?'Following':'Follow'}</button><button class="google-btn" id="signOutBtn"><span class="g-mark">G</span><span>Sign out</span></button>`;
+    else profileActions.innerHTML='<button class="google-btn" id="profileSignInBtn"><span class="g-mark">G</span><span>Sign in</span></button>';
+    $('#editProfileBtn')?.addEventListener('click',openProfileEditor);$('#signOutBtn')?.addEventListener('click',signOut);$('#profileSignInBtn')?.addEventListener('click',signInWithGoogle);
+    $('[data-profile-follow]')?.addEventListener('click',async e=>{if(!currentUser)return signInWithGoogle();if(!cloud)return showToast('Social service is offline');const b=e.currentTarget;if(b.disabled)return;b.disabled=true;b.classList.add('social-pending');try{await cloud.toggleFollow(currentUser.id,user.id);}catch(err){reportCloudError('Follow update',err,{toastUser:true});}finally{b.classList.remove('social-pending');b.disabled=false;}});
+    const savedTab=$('[data-profile-tab="saved"]');if(savedTab)savedTab.hidden=!isOwn;
+    updateProfileTabs();renderProfileTab(activeProfileTab==='saved'&&!isOwn?'projects':activeProfileTab);
+  }
+  function updateProfileTabs(){
+    const user=viewedUser();if(!user)return;const projects=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId)).length;
+    const map={projects:`Projects (${projects})`,posts:`Posts (${profilePosts.length})`,followers:`Followers (${profileFollowers.length})`,following:`Following (${profileFollowing.length})`,saved:`Saved (${profileSavedIds.length})`};
+    for(const [tab,label] of Object.entries(map)){const b=$(`[data-profile-tab="${tab}"]`);if(b)b.textContent=label;}
+  }
+  function projectById(id){return projectRegistry.get(id)||builtInProjects.find(p=>p.id===id)||storedProjects.find(p=>p.id===id)||null;}
+  function peopleRows(ids){return ids.length?`<div class="people-list">${ids.map(id=>{const u=userRegistry.get(id)||normalizeUser({id,handle:id,displayName:id});return `<button class="person-row" data-person-profile="${escapeHTML(id)}" style="width:100%;color:inherit;text-align:left;cursor:pointer">${userAvatarHTML(u)}<span class="person-copy"><strong>${escapeHTML(u.displayName)}</strong><span>@${escapeHTML(u.handle)}${u.bio?` · ${escapeHTML(u.bio)}`:''}</span></span></button>`;}).join('')}</div>`:'<div class="empty-compact">Nothing here yet.</div>';}
+  function renderProfileTab(tab=activeProfileTab){
+    const user=viewedUser();if(!user)return;const isOwn=!!currentUser&&user.id===currentUser.id;activeProfileTab=tab;updateProfileTabs();$$('#profileTabs [data-profile-tab]').forEach(b=>b.classList.toggle('active',b.dataset.profileTab===tab));
+    if(tab==='projects'){
+      let mine=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId));mine=[...new Map(mine.map(p=>[p.projectId||p.localId,p])).values()].sort((a,b)=>profileSortNewest?(b.createdAt||0)-(a.createdAt||0):(a.createdAt||0)-(b.createdAt||0));
+      profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project">${renderThumbnail(p)}<div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
+      $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
+
+      $('.profile-project',profilePanel).forEach((card,index)=>{
+        const entry=mine[index],id=String(entry?.projectId||entry?.localId||''),project=projectById(id);
+        if(!project||!id)return;
+        card.tabIndex=0;card.setAttribute('role','link');card.setAttribute('aria-label','Open '+project.title);
+        const actions=$('.profile-project-actions',card);
+        if(actions){
+          const open=document.createElement('button');open.type='button';open.className='mini-btn';open.textContent='Open';open.setAttribute('aria-label','Open '+project.title);
+          open.addEventListener('click',()=>openProjectById(id));actions.append(open);
+          if(canEditOwnedProject(project)){
+            const edit=document.createElement('button');edit.type='button';edit.className='mini-btn';edit.textContent='Edit';edit.setAttribute('aria-label','Edit '+project.title);
+            edit.addEventListener('click',()=>openOwnedProjectEditor(id));actions.append(edit);
+          }
+        }
+        card.addEventListener('click',e=>{if(!e.target.closest('button,a,input,select,textarea'))openProjectById(id);});
+        card.addEventListener('keydown',e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openProjectById(id);}});
+      });
+    }else if(tab==='posts'){
+      profilePanel.innerHTML=`<div class="panel-head"><h2>Posts</h2>${isOwn?`<button class="sort-btn" id="newPostBtn">${postComposerOpen?'Cancel':'New post'}</button>`:''}</div>${isOwn&&postComposerOpen?'<div class="field"><label for="postText">Post to your followers</label><textarea id="postText" maxlength="280" placeholder="Share an update…"></textarea><button class="publish" id="postBtn">Post</button></div>':''}<div class="post-list">${profilePosts.length?profilePosts.map(p=>`<div class="post-card"><div class="post-head"><small>${escapeHTML(formatTime(p.createdAt))}</small>${isOwn?`<button class="danger-btn" data-delete-post="${escapeHTML(p.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.text)}</p></div>`).join(''):'<div class="empty-compact">No posts yet.</div>'}</div>`;
+      $('#newPostBtn')?.addEventListener('click',()=>{postComposerOpen=!postComposerOpen;renderProfileTab('posts');});$('#postBtn')?.addEventListener('click',createPost);$$('[data-delete-post]',profilePanel).forEach(b=>b.addEventListener('click',()=>deletePost(b.dataset.deletePost)));
+    }else if(tab==='followers')profilePanel.innerHTML=`<div class="panel-head"><h2>Followers</h2><span class="result-meta">${profileFollowers.length} total</span></div>${peopleRows(profileFollowers)}`;
+    else if(tab==='following')profilePanel.innerHTML=`<div class="panel-head"><h2>Following</h2><span class="result-meta">${profileFollowing.length} total</span></div>${peopleRows(profileFollowing)}`;
+    else if(tab==='saved'){
+      if(!isOwn){renderProfileTab('projects');return;}
+      const saved=profileSavedIds.map(projectById).filter(Boolean);profilePanel.innerHTML=`<div class="panel-head"><h2>Saved projects</h2><span class="result-meta">${saved.length} total</span></div>${saved.length?saved.map(p=>`<div class="saved-project-row"><div><strong>${escapeHTML(p.title)}</strong><div class="result-meta">${p.isDefault?'Project Embedded':`@${escapeHTML(p.creator)}`} · ${escapeHTML(p.category)}</div></div><button data-open-saved="${escapeHTML(p.id)}">Open</button></div>`).join(''):'<div class="empty-compact">Save a project from the feed and it will appear here.</div>'}`;$$('[data-open-saved]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProjectById(b.dataset.openSaved)));
+    }
+    $$('[data-person-profile]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.personProfile)));
+  }
+  function formatTime(value){const ms=value?.toMillis?value.toMillis():Number(value||Date.now());const d=new Date(ms);return Number.isNaN(d.getTime())?'Recently':d.toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
+  function openProjectById(id){const target=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast('That project is not loaded in this feed yet');}
+  function subscribeViewedProfile(){
+    clearProfileSubscriptions();const user=viewedUser();if(!user||!cloud){renderProfile();return;}
+    profileUnsubs.push(
+      cloud.subscribeFollowers(user.id,ids=>{profileFollowers=ids;renderProfile();},err=>reportCloudError('Followers sync',err)),
+      cloud.subscribeFollowing(user.id,ids=>{profileFollowing=ids;renderProfile();},err=>reportCloudError('Profile following sync',err)),
+      cloud.subscribePosts(user.id,posts=>{profilePosts=posts;updateProfileTabs();if(activeProfileTab==='posts')renderProfileTab('posts');},err=>reportCloudError('Posts sync',err)),
+      cloud.subscribePresence(user.id,state=>{profilePresence=state||{online:false};renderProfile();},err=>reportCloudError('Presence sync',err))
+    );
+    if(currentUser?.id===user.id)profileUnsubs.push(cloud.subscribeSaved(user.id,ids=>{profileSavedIds=ids;updateProfileTabs();if(activeProfileTab==='saved')renderProfileTab('saved');},err=>reportCloudError('Saved sync',err)));
+  }
+  function setCurrentUser(rawUser){
+    const previousId=currentUser?.id||null;
+    currentUser=rawUser?registerUser(rawUser):null;followingUnsub?.();followingUnsub=null;followingIds=new Set();
+    if(currentUser&&cloud)followingUnsub=cloud.subscribeFollowing(currentUser.id,ids=>{followingIds=new Set(ids);refreshFollowButtons();if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Following sync',err));
+    if(!currentUser){postComposerOpen=false;clearProfileSubscriptions();}
+    refreshFollowButtons();rebindAllProjectSocial();
+    if(activeCommentProjectId)renderComments();
+    if(screens.profile.classList.contains('active')){if(!viewedProfileId||viewedProfileId===previousId)viewedProfileId=currentUser?.id||null;renderProfile();subscribeViewedProfile();}
+    window.dispatchEvent(new CustomEvent('rapidfire:sessionchange',{detail:{user:currentUser}}));return currentUser;
+  }
+  async function signInWithGoogle(){
+    if(!cloud){showToast('Firebase is not connected yet');return null;}
+    try{await cloud.signInGoogle();return true;}
+    catch(err){
+      const code=String(err?.code||'');
+      if(code==='auth/popup-closed-by-user')showToast('Sign-in cancelled');
+      else if(code==='auth/unauthorized-domain')showToast('Add this site to Firebase Auth → Authorized domains');
+      else reportCloudError('Google sign-in',err,{toastUser:true});
+      return null;
+    }
+  }
+  async function signOut(){
+    try{viewedProfileId=null;await presenceUnsub?.();presenceUnsub=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
+    catch(err){reportCloudError('Sign out',err,{toastUser:true});}
+  }
+  async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){reportCloudError('Post publish',err,{toastUser:true});}}
+  async function deletePost(id){if(!currentUser||!cloud)return;if(!await confirmAction('Delete this post?'))return;try{await cloud.deletePost(id);showToast('Post deleted');}catch(err){reportCloudError('Post delete',err,{toastUser:true});}}
+  async function deleteOwnedProject(id){
+    const project=projectById(id);
+    if(!canEditOwnedProject(project)){showToast('You cannot delete this project');return;}
+    if(!await confirmAction('Permanently delete "'+project.title+'"? This removes the published project and its uploaded source for everyone. This cannot be undone.'))return;
+    if(!canEditOwnedProject(project))return;
+    if(project.remote&&!cloud){showToast('Reconnect to Firebase before deleting this project');return;}
+    try{
+      if(project.remote)await cloud.deleteProject(project);
+      else if(!await removeLocalProject(id,{skipConfirm:true}))throw new Error('Could not remove the local project');
+      removeProjectFromUI(id);showToast('Project deleted');
+    }catch(err){console.warn('Project delete failed',err);showToast(err?.message||'Could not delete project');}
+  }
+  function removeProjectFromUI(id){const article=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(article){socialUnsubByArticle.get(article)?.();feedObserver.unobserve(article);runtimeByArticle.get(article)?.destroy();article.remove();}projectRegistry.delete(id);const ix=items.findIndex(i=>(i.projectId||i.localId)===id);if(ix>=0)items.splice(ix,1);renderSearch($('#searchInput')?.value||'');renderProfile();}
+
+  function imagePicker(prefix){
+    const zone=$(`#${prefix}Drop`),input=$(`#${prefix}File`),preview=$(`#${prefix}Preview`),status=$(`#${prefix}Status`),remove=$(`#${prefix}Remove`);
+    let data='',sequence=0,pending=false;
+    function display(url){preview.hidden=!url;if(url)preview.src=url;else preview.removeAttribute('src');remove.hidden=!url;}
+    function reset(url=''){sequence++;pending=false;data='';input.value='';display(url);status.textContent='PNG, JPEG, WebP or GIF · Up to 5 MB';}
+    async function load(files){
+      const version=++sequence,file=files?.[0];pending=false;if(!file)return;
+      if(files.length!==1){status.textContent='Choose one image at a time.';return;}
+      if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||!file.size||file.size>5*1024*1024){status.textContent='Choose a PNG, JPEG, WebP or GIF image up to 5 MB.';input.value='';return;}
+      pending=true;status.textContent='Preparing image…';
+      try{
+        const bitmap=await createImageBitmap(file);
+        const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+        canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+        let prepared=canvas.toDataURL('image/webp',0.82);
+        if(prepared.length>600000){const small=document.createElement('canvas');small.width=Math.max(1,Math.round(canvas.width/2));small.height=Math.max(1,Math.round(canvas.height/2));small.getContext('2d').drawImage(canvas,0,0,small.width,small.height);prepared=small.toDataURL('image/webp',0.65);}
+        if(prepared.length>600000)throw new Error('Image could not be resized.');
+        if(version!==sequence)return;
+        data=prepared;display(data);status.textContent=`${file.name} · Ready to save`;
+      }catch(_){if(version===sequence)status.textContent='Could not read that image. Choose another file.';}
+      finally{if(version===sequence){pending=false;input.value='';}}
+    }
+    zone.addEventListener('click',()=>input.click());input.addEventListener('change',()=>load(input.files));
+    // Open synchronously during keyboard activation, including while the modal scrolls.
+    zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
+    for(const event of ['dragenter','dragover'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.add('dragover');});
+    for(const event of ['dragleave','drop'])zone.addEventListener(event,e=>{e.preventDefault();zone.classList.remove('dragover');});
+    zone.addEventListener('drop',e=>load(e.dataTransfer?.files));
+    remove.addEventListener('click',()=>reset());
+    reset();return {reset,data:()=>data,pending:()=>pending};
+  }
+  const avatarPicker=imagePicker('avatar'),thumbnailPicker=imagePicker('thumbnail');
+
+  // ---------- edit existing published projects (owner only) ----------
+  const projectEditor=$('#projectEditModal');
+  const editThumbPicker=imagePicker('editThumb');
+  let editingProjectId=null,editThumbnailRemoved=false;
+  function canEditOwnedProject(project){
+    return !!project && !!currentUser && project.ownerUserId===currentUser.id
+      && can('manageOwnProjects') && !project.isDefault && project.sourceType!=='builtin'
+      && (project.remote||project.local);
+  }
+  function closeOwnedProjectEditor(){
+    projectEditor.classList.remove('open');
+    projectEditor.setAttribute('aria-hidden','true');
+    editingProjectId=null;
+    $('#editProjectHTML').value='';
+  }
+  function openOwnedProjectEditor(projectId){
+    const project=projectById(String(projectId));
+    if(!canEditOwnedProject(project)){showToast('Only the project owner can edit it');return;}
+    editingProjectId=project.id;editThumbnailRemoved=false;
+    $('#editProjectName').value=project.title;
+    $('#editProjectDescription').value=project.desc;
+    $('#editProjectTags').value=project.tags.join(', ');
+    const category=$('#editProjectCategory');
+    if(!Array.from(category.options).some(option=>option.value===project.category)){
+      const option=document.createElement('option');option.value=project.category;option.textContent=project.category;category.append(option);
+    }
+    category.value=project.category;
+    $('#editProjectEmbedGroup').hidden=project.sourceType!=='embed';
+    $('#editProjectHTMLGroup').hidden=!['html','local'].includes(project.sourceType);
+    $('#editProjectEmbed').value=project.embedUrl||'';
+    $('#editProjectHTML').value='';
+    editThumbPicker.reset(project.thumbnailUrl||'');
+    projectEditor.classList.add('open');projectEditor.setAttribute('aria-hidden','false');
+    $('#editProjectName').focus({preventScroll:true});
+  }
+  async function saveOwnedProjectEditor(){
+    const project=projectById(editingProjectId),button=$('#saveProjectEdit');
+    if(!canEditOwnedProject(project)){showToast('Only the project owner can edit it');closeOwnedProjectEditor();return;}
+    if(button.disabled)return;
+    if(editThumbPicker.pending())return showToast('The thumbnail is still preparing');
+    const title=$('#editProjectName').value.trim();
+    if(!title)return showToast('Enter a project name');
+    const desc=$('#editProjectDescription').value.trim();
+    const tags=$('#editProjectTags').value.split(',').map(tag=>tag.trim().replace(/^#/, '')).filter(Boolean).slice(0,8);
+    let embedUrl=project.embedUrl;
+    if(project.sourceType==='embed'){
+      embedUrl=normalizeEmbedUrl($('#editProjectEmbed').value);
+      if(!embedUrl)return showToast('Enter a valid HTTP(S) embed URL');
+    }
+    const selected=$('#editProjectHTML').files[0];
+    let updatedSource=null;
+    if(selected&&['html','local'].includes(project.sourceType)){
+      if(!(/\.html?$/i.test(selected.name)||selected.type==='text/html'))return showToast('Select an HTML file to replace the source');
+      try{updatedSource=await fileToText(selected);}catch(_){return showToast('Could not read the replacement HTML');}
+      if(!updatedSource.trim())return showToast('The replacement HTML file is empty');
+    }
+    if(project.remote&&!cloud)return showToast('Reconnect to Firebase to save changes');
+    if(!canEditOwnedProject(project))return;
+    const image=editThumbPicker.data();
+    const edited=normalizeProject({...project,title,desc,tags,category:$('#editProjectCategory').value,embedUrl,thumbnailUrl:image||(editThumbnailRemoved?'':project.thumbnailUrl)});
+    if(updatedSource!==null&&!project.remote)edited.source=updatedSource;
+    button.disabled=true;button.textContent='Saving…';
+    try{
+      let saved=edited;
+      if(project.remote){
+        const payload=await cloud.upsertProject(edited,updatedSource!==null&&project.sourceType==='html'?{html:updatedSource}:{});
+        saved=normalizeProject({...edited,...payload});
+      }else{
+        const localProjects=safeStore.get('rapidfire.local.projects.v2',[]);
+        const i=localProjects.findIndex(p=>String(p.id)===edited.id);
+        if(i<0)throw new Error('The local project could not be located');
+        localProjects[i]={...localProjects[i],...edited};
+        if(!safeStore.set('rapidfire.local.projects.v2',localProjects))throw new Error('Local storage is unavailable');
+        const old=storedProjects.findIndex(p=>p.id===edited.id);if(old>=0)storedProjects[old]=edited;
+      }
+      upsertSearchItem(saved);mountProject(saved);renderSearch($('#searchInput')?.value||'');
+      closeOwnedProjectEditor();renderProfile();showToast('Project changes saved');
+    }catch(err){console.warn('Project edit failed',err);showToast(err?.message||'Could not save project');}
+    finally{button.disabled=false;button.textContent='Save changes';}
+  }
+  $('#closeProjectEdit').addEventListener('click',closeOwnedProjectEditor);
+  $('#cancelProjectEdit').addEventListener('click',closeOwnedProjectEditor);
+  $('#saveProjectEdit').addEventListener('click',saveOwnedProjectEditor);
+  $('#editThumbRemove').addEventListener('click',()=>{editThumbnailRemoved=true;});
+  projectEditor.addEventListener('click',event=>{if(event.target===projectEditor)closeOwnedProjectEditor();});
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&projectEditor.classList.contains('open')&&!$('#confirmDialog').open){
+      event.preventDefault();closeOwnedProjectEditor();
+    }
+  });
+
+  function openProfileEditor(){const user=currentUser;if(!user)return;$('#editDisplayName').value=user.displayName;$('#editHandle').value=user.handle;$('#editBio').value=user.bio;$('#editAvatarUrl').value=user.avatarUrl;avatarPicker.reset(user.avatarUrl);const m=$('#profileEditModal');m.classList.add('open');m.setAttribute('aria-hidden','false');}
+  function closeProfileEditor(){const m=$('#profileEditModal');m.classList.remove('open');m.setAttribute('aria-hidden','true');}
+  async function saveProfileEditor(){if(!currentUser||!cloud||$('#saveProfileEdit').disabled)return;if(avatarPicker.pending())return showToast('Your photo is still preparing. Try Save again in a moment.');const patch={displayName:$('#editDisplayName').value,handle:$('#editHandle').value,bio:$('#editBio').value,avatarUrl:$('#editAvatarUrl').value};const btn=$('#saveProfileEdit');btn.disabled=true;try{btn.textContent='Saving…';const saved=await cloud.updateProfile(currentUser.id,currentUser.handle,patch,avatarPicker.data());setCurrentUser({...currentUser,...saved});refreshCreatorIdentities();closeProfileEditor();showToast('Profile updated');}catch(err){showToast(err?.message||'Could not update profile');}finally{btn.disabled=false;btn.textContent='Save profile';}}
+  $('#closeProfileEdit').addEventListener('click',closeProfileEditor);$('#profileEditModal').addEventListener('click',e=>{if(e.target.id==='profileEditModal')closeProfileEditor();});$('#saveProfileEdit').addEventListener('click',saveProfileEditor);
+  $('#profileTabs').addEventListener('click',e=>{const b=e.target.closest('[data-profile-tab]');if(b&&!b.hidden)renderProfileTab(b.dataset.profileTab);});
+
+  let lastPublishedCloudProjectIds=new Set();
+  async function bootstrapFirebase(){
+    const indicator=$('#syncIndicator');
+    const isWebProtocol = location.protocol === 'https:' || location.protocol === 'http:';
+    if(!isWebProtocol){
+      indicator.textContent='Local preview · cloud off';
+      indicator.classList.add('error');
+      renderProfile();
+      return;
+    }
+    indicator.textContent='Connecting…';
+    try{
+      cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});
+      indicator.textContent='Firebase connected';indicator.classList.remove('error');indicator.classList.add('online');
+      cloud.subscribeProfiles(users=>{users.forEach(registerUser);refreshCreatorIdentities();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
+      cloud.subscribeProjects(projects=>{const liveIds=new Set(projects.filter(p=>!String(p.id).startsWith('default-')).map(p=>String(p.id)));for(const oldId of lastPublishedCloudProjectIds){if(!liveIds.has(oldId))removeProjectFromUI(oldId);}lastPublishedCloudProjectIds=liveIds;for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?(builtInProjects.some(b=>b.id===raw.id&&b.ownerUserId===raw.ownerUserId&&b.contentUrl===raw.contentUrl)?'builtin':'remote'):'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(['contentUrl','embedUrl','sourceType','thumbnailUrl','title','desc','category','ownerUserId'].some(key=>existing[key]!==p[key])||existing.tags.join('|')!==p.tags.join('|'))mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      let authGeneration=0;
+      cloud.onAuth(async fb=>{
+        const generation=++authGeneration;
+        firebaseUser=fb;presenceUnsub?.();presenceUnsub=null;
+        if(!fb){setCurrentUser(null);return;}
+        const profileId=profileIdForFirebaseUser(fb),isMaxP=profileId==='user-maxp',baseHandle=isMaxP?'MaxP':cleanHandle((fb.displayName||fb.email?.split('@')[0]||'User')+`-${fb.uid.slice(0,5)}`);
+        const seed={...(isMaxP?MAXP_USER:{}),id:profileId,authUid:fb.uid,handle:isMaxP?'MaxP':baseHandle,displayName:isMaxP?'MaxP':(fb.displayName||baseHandle),bio:isMaxP?'Main developer':'',avatarUrl:fb.photoURL||'',capabilities:USER_CAPABILITIES};
+        let stored=null;try{stored=await cloud.getProfile(profileId);}catch(err){reportCloudError('Profile load',err);}
+        if(generation!==authGeneration)return;
+        let user=registerUser(stored?{...seed,...stored,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES}:seed);
+        try{const persisted=await cloud.upsertProfile(user);user=registerUser({...user,...persisted,id:profileId,authUid:fb.uid,capabilities:USER_CAPABILITIES});}catch(err){reportCloudError('Profile save',err,{toastUser:true});}
+        if(generation!==authGeneration)return;
+        setCurrentUser(user);try{presenceUnsub=await cloud.setPresence(user.id,err=>reportCloudError('Presence',err));}catch(err){reportCloudError('Presence',err);}
+        if(isMaxP){cloud.syncBuiltins(builtInProjects.map(p=>({...p,sourceType:'builtin',contentUrl:p.contentUrl}))).catch(err=>reportCloudError('Built-in project sync',err));}
+      });
+      rebindAllProjectSocial();
+    }catch(err){console.error('Firebase bootstrap failed',err);indicator.textContent='Firebase offline';indicator.classList.add('error');showToast('Firebase connection failed — browsing still works');renderProfile();}
+  }
+  // ---------- local HTML / embed URL preview + publisher ----------
+  const modal=$('#publishModal'),dropzone=$('#dropzone'),htmlFile=$('#htmlFile'),runner=$('#runner'),runnerPreview=$('#runnerPreview'),embedUrlInput=$('#embedUrl');
+  let selectedHTML='',selectedFileName='',selectedEmbedUrl='',selectedSourceMode='';
+  function openPublish(){modal.classList.add('open');modal.setAttribute('aria-hidden','false');}
+  function closePublish(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}
+  function clearRunner(){runnerPreview.removeAttribute('srcdoc');runnerPreview.src='about:blank';runner.classList.remove('visible');}
+  function resetPublishForm(){thumbnailPicker.reset();selectedHTML='';selectedFileName='';selectedEmbedUrl='';selectedSourceMode='';htmlFile.value='';embedUrlInput.value='';clearRunner();dropzone.classList.remove('loaded');$('#dropStatus').textContent='Preview it here. Published feed cards wait for “Tap to play”.';$('#runnerName').textContent='Project preview';$('#projectName').value='';$('#projectDescription').value='';$('#projectTags').value='';$('#projectCategory').value='Game';$('#publishBtn').disabled=true;}
+  function normalizeEmbedUrl(value){
+    let raw=String(value||'').trim();if(!raw)return '';
+    if(!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw))raw=`https://${raw}`;
+    try{const url=new URL(raw);if(url.protocol!=='https:'&&url.protocol!=='http:')return '';return url.href;}catch(_){return '';}
+  }
+  function setPreviewHTML(text,name='Local HTML'){selectedSourceMode='html';selectedHTML=text;selectedFileName=name;selectedEmbedUrl='';embedUrlInput.value='';runnerPreview.removeAttribute('src');runnerPreview.srcdoc=text;runner.classList.add('visible');$('#runnerName').textContent=name;$('#publishBtn').disabled=false;}
+  function setPreviewEmbed(url){selectedSourceMode='embed';selectedEmbedUrl=url;selectedHTML='';selectedFileName='';htmlFile.value='';runnerPreview.removeAttribute('srcdoc');runnerPreview.src=url;runner.classList.add('visible');dropzone.classList.remove('loaded');$('#dropStatus').textContent='Embed URL selected. Choose an HTML file to switch back.';$('#runnerName').textContent=`Embed · ${embedHost(url)}`;if(!$('#projectName').value.trim())$('#projectName').value=embedHost(url).replace(/^www\./,'');$('#publishBtn').disabled=false;}
+  async function fileToText(file){if(file.text)return file.text();return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(r.error);r.readAsText(file);});}
+  async function loadHTMLFile(file){if(!file)return;const looksHTML=/\.html?$/i.test(file.name)||file.type==='text/html';if(!looksHTML){showToast('Choose an HTML file');return;}try{const text=await fileToText(file);setPreviewHTML(text,file.name);dropzone.classList.add('loaded');$('#dropStatus').textContent=`${file.name} · ${(file.size/1024).toFixed(file.size>10240?0:1)} KB loaded`;if(!$('#projectName').value.trim())$('#projectName').value=file.name.replace(/\.html?$/i,'').replace(/[_-]+/g,' ');showToast('HTML preview running locally');}catch(_){showToast('Could not read that HTML file');}}
+  function loadEmbedURL(){const url=normalizeEmbedUrl(embedUrlInput.value);if(!url){showToast('Enter a valid HTTP(S) embed URL');embedUrlInput.focus();return;}embedUrlInput.value=url;setPreviewEmbed(url);showToast('Embed preview loaded');}
+  dropzone.addEventListener('click',()=>htmlFile.click());dropzone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();htmlFile.click();}});htmlFile.addEventListener('change',()=>loadHTMLFile(htmlFile.files[0]));['dragenter','dragover'].forEach(type=>dropzone.addEventListener(type,e=>{e.preventDefault();dropzone.classList.add('dragover');}));['dragleave','drop'].forEach(type=>dropzone.addEventListener(type,e=>{e.preventDefault();dropzone.classList.remove('dragover');}));dropzone.addEventListener('drop',e=>loadHTMLFile(e.dataTransfer?.files?.[0]));
+  $('#loadEmbedUrl').addEventListener('click',loadEmbedURL);embedUrlInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadEmbedURL();}});
+  $('#restartPreview').addEventListener('click',()=>{if(selectedSourceMode==='html'&&selectedHTML){runnerPreview.srcdoc='';requestAnimationFrame(()=>runnerPreview.srcdoc=selectedHTML);showToast('Preview restarted');}else if(selectedSourceMode==='embed'&&selectedEmbedUrl){runnerPreview.src='about:blank';requestAnimationFrame(()=>runnerPreview.src=selectedEmbedUrl);showToast('Embed reloaded');}});$('#fullscreenPreview').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await runnerPreview.requestFullscreen();}catch(_){showToast('Fullscreen request was blocked');}});$('#closeModal').addEventListener('click',closePublish);modal.addEventListener('click',e=>{if(e.target===modal)closePublish();});
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape') return;
+    if($('#confirmDialog').open)return;
+    if(modal.classList.contains('open')){ closePublish(); return; }
+    if(infoSheet.classList.contains('open')){ closeInfo(); return; }
+    if($('#commentsModal')?.classList.contains('open')){ closeComments(); return; }
+    if(activeProject){ e.preventDefault(); stopActiveProject(); }
+  });
+
+  $('#publishBtn').addEventListener('click',async()=>{
+    if($('#publishBtn').disabled)return;
+    if(thumbnailPicker.pending())return showToast('Your thumbnail is still preparing. Try Publish again in a moment.');
+    if(!currentUser)return showToast('Sign in with Google before publishing');
+    if(!cloud)return showToast('Firebase is not connected');
+    if(!selectedSourceMode)return showToast('Choose an HTML file or embed URL first');
+    const button=$('#publishBtn'),fallbackName=selectedSourceMode==='html'?selectedFileName.replace(/\.html?$/i,''):embedHost(selectedEmbedUrl),title=$('#projectName').value.trim()||fallbackName||'Untitled Project';
+    const desc=$('#projectDescription').value.trim()||(selectedSourceMode==='embed'?'An embedded interactive web project.':'A published interactive HTML project.');
+    const tags=$('#projectTags').value.split(',').map(t=>t.trim().replace(/^#/,'')).filter(Boolean).slice(0,8),slug=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,36)||'project';
+    const projectId=`${currentUser.id}-${slug}-${Date.now().toString(36)}`;
+    button.disabled=true;button.textContent='Publishing…';
+    try{
+      let contentUrl='',storagePath='';const sourceType=selectedSourceMode==='html'?'html':'embed';
+
+      const project=normalizeProject({id:projectId,ownerUserId:currentUser.id,creator:currentUser.handle,title,desc,tags,category:$('#projectCategory').value,type:sourceType==='html'?'remote':'embed',sourceType,contentUrl,storagePath,embedUrl:selectedSourceMode==='embed'?selectedEmbedUrl:'',remote:true,createdAt:Date.now(),views:'0',likes:'0',saves:'0',shares:'0'});
+      const saved=await cloud.upsertProject(project,{html:selectedSourceMode==='html'?selectedHTML:undefined,thumbnailImage:thumbnailPicker.data()});const published=normalizeProject({...project,...saved});upsertSearchItem(published);const target=mountProject(published,{prepend:true});addRecent(title);renderSearch();closePublish();go('home');target.scrollIntoView({block:'start'});showToast(`${title} published`);resetPublishForm();
+    }catch(err){console.error(err);showToast(err?.message||'Could not publish. Please try again.');}
+    finally{button.disabled=false;button.textContent='Publish to RapidFire';}
+  });
+
+  // Public integration surface for future web-service evolution.
+  window.RapidFireTemplate=Object.freeze({
+    schema:Object.freeze({user:USER_SCHEMA_VERSION,project:PROJECT_SCHEMA_VERSION}),firebaseConfig:Object.freeze({...FIREBASE_CONFIG}),configureServices,
+    users:Object.freeze({normalize:normalizeUser,upsert:registerUser,get:userId=>userRegistry.get(String(userId))||null,getByHandle:findUserByHandle,all:()=>[...userRegistry.values()],current:()=>currentUser,maxPUserId:MAXP_USER.id}),
+    auth:Object.freeze({signInWithGoogle,signOut}),
+    addProject(project,options={}){const p=normalizeProject(project);upsertSearchItem(p);const el=mountProject(p,options);renderSearch($('#searchInput').value);return el;},
+    play(article){setProjectPlaying(article,true);},stop(){stopActiveProject();},next(article=centeredProject()){return scrollToAdjacentProject(article,1);},previous(article=centeredProject()){return scrollToAdjacentProject(article,-1);},
+    removeProject:deleteOwnedProject,openProfile,openComments,normalizeProject,normalizeEmbedUrl,instrumentProjectHTML,brandLogoDataURL:BRAND_LOGO_DATA_URL
+  });
+  renderProfile();
+  bootstrapFirebase();
+})();
+</script></body>
+</html>
