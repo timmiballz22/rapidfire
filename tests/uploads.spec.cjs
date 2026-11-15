@@ -100,3 +100,21 @@ test('invalid replacement during image preparation does not block publishing',as
   await expect.poll(()=>page.evaluate(()=>window.lastProject?.extras.thumbnailImage)).toBe(original);
   await page.evaluate(()=>window.finishDecode());
 });
+
+test('own profile renders empty and multiple project collections without page errors',async({page})=>{
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await prepare(page);
+  await page.getByRole('button',{name:'Profile',exact:true}).click();
+  await expect(page.locator('#profilePanel')).toContainText('No projects yet.');
+  await page.evaluate(()=>{
+    for(const id of ['profile-project-one','profile-project-two']){
+      window.RapidFireTemplate.addProject({id,ownerUserId:'alice',creator:'Alice',title:id,sourceType:'embed',type:'embed',embedUrl:'https://example.com',tags:[]});
+    }
+    window.RapidFireTemplate.openProfile('alice');
+  });
+  await expect(page.locator('#profilePanel .profile-project')).toHaveCount(2);
+  await expect(page.locator('#profilePanel [data-delete-project]')).toHaveCount(2);
+  await expect(page.locator('#profilePanel button').filter({hasText:/^Open$/})).toHaveCount(2);
+  await expect(page.locator('#profilePanel button').filter({hasText:/^Edit$/})).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
