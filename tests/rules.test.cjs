@@ -134,3 +134,21 @@ test('both databases share one canonical MaxP identity',async()=>{
   await assertFails(set(ref(unverified,'social/projects/canonical/likes/user-maxp'),{at:1}));
   await assertFails(set(ref(unverified,'admin/settings'),{enabled:false}));
 });
+
+test('private recommendation state stays private while positive profile signals remain public',async()=>{
+  const alice=await profile('rec-alice'),bob=await profile('rec-bob');
+  const anonymous=env.unauthenticatedContext().firestore();
+  const privateRef=doc(alice,'users','rec-alice','recommendations','state');
+  const payload={version:1,history:[{id:'demo',views:2,seconds:34,swipes:1,likes:1,saves:0,comments:1,shares:0,at:Date.now()}]};
+  await assertSucceeds(setDoc(privateRef,payload));
+  assert.equal((await getDoc(privateRef)).data().history[0].seconds,34);
+  await assertFails(getDoc(doc(bob,'users','rec-alice','recommendations','state')));
+  await assertFails(getDoc(doc(anonymous,'users','rec-alice','recommendations','state')));
+  await assertFails(setDoc(doc(bob,'users','rec-alice','recommendations','state'),payload));
+  await assertFails(setDoc(doc(alice,'users','rec-bob','recommendations','state'),payload));
+  await assertFails(setDoc(doc(alice,'users','rec-alice','recommendations','unapproved'),payload));
+  await assertFails(setDoc(privateRef,{version:1,history:new Array(121).fill({id:'spam'})}));
+  await assertSucceeds(updateDoc(doc(alice,'users','rec-alice'),{recommendationSignals:{interests:{art:2},positiveProjectIds:['demo']}}));
+  assert.deepEqual((await getDoc(doc(anonymous,'users','rec-alice'))).data().recommendationSignals.positiveProjectIds,['demo']);
+  await assertSucceeds(deleteDoc(privateRef));
+});
