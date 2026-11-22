@@ -84,3 +84,46 @@ export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',n
   }
   return ordered;
 }
+
+
+/**
+ * Search uses the same viewing/engagement/collaborative history as Home.
+ * Literal text relevance is the primary sort key, personalization breaks
+ * ties within each relevance tier. An exact title must never be buried by
+ * previously liked, but unrelated, content.
+ */
+export function searchProjectMatchStrength(project,query){
+  const q=String(query||'').trim().toLowerCase().replace(/^@+/,'');
+  if(!q)return 1;
+  const title=String(project.title||'').toLowerCase();
+  const category=String(project.category||'').toLowerCase();
+  const creator=String(project.creator||'').toLowerCase();
+  const originalCreator=String(project.originalCreator||'').toLowerCase();
+  const desc=String(project.desc||project.description||'').toLowerCase();
+  const tags=(Array.isArray(project.tags)?project.tags:[]).map(v=>String(v).toLowerCase().replace(/^#/,''));
+  let best=-1;
+  const add=(value,base)=>{
+    if(!value)return;
+    if(value===q)best=Math.max(best,base+6);
+    else if(value.startsWith(q))best=Math.max(best,base+4);
+    else if(value.includes(q))best=Math.max(best,base+2);
+  };
+  add(title,100);
+  for(const tag of tags)add(tag,75);
+  add(category,65);add(creator,60);add(originalCreator,60);add(desc,25);
+  return best;
+}
+export function rankSearchProjects(query,projects,state,profiles=[],viewerId='',now=Date.now(),catalog=projects){
+  const q=String(query||'').trim();
+  const matches=projects.map((p,index)=>({p,index,relevance:searchProjectMatchStrength(p,q)}))
+    .filter(entry=>entry.relevance>=0);
+  if(!matches.length)return [];
+  const personal=rankRecommendedProjects(matches.map(e=>e.p),state,profiles,viewerId,now,catalog);
+  const byPersonalRank=new Map(personal.map((p,i)=>[p.id,i]));
+  // Stable lexical-first ordering, with the same feed recommendation engine
+  // providing affinity, peer likes, freshness, novelty and diversity.
+  matches.sort((a,b)=>b.relevance-a.relevance
+    ||(byPersonalRank.get(a.p.id)??Infinity)-(byPersonalRank.get(b.p.id)??Infinity)
+    ||a.index-b.index);
+  return matches.map(entry=>entry.p);
+}
