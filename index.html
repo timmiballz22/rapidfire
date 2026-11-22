@@ -1472,7 +1472,9 @@ async function createFirebaseService(firebaseConfig, options={}){
     const all=projectElements(),index=all.indexOf(current);
     const upcoming=all.slice(index+1,index+6).map(n=>projectRegistry.get(n.dataset.projectId)).filter(Boolean);
     const keep=new Set(upcoming.map(p=>p.contentUrl).filter(Boolean));
-    if(activeProject){const currentSource=projectRegistry.get(activeProject.dataset.projectId)?.contentUrl;if(currentSource)keep.add(currentSource);}
+    const currentSource=projectRegistry.get(current.dataset.projectId)?.contentUrl;
+    if(currentSource)keep.add(currentSource);
+    if(activeProject){const runningSource=projectRegistry.get(activeProject.dataset.projectId)?.contentUrl;if(runningSource)keep.add(runningSource);}
     for(const url of preloadedSources.keys())if(!keep.has(url))preloadedSources.delete(url);
     preloadGeneration++;preloadQueue=upcoming.map(project=>({project,generation:preloadGeneration}));
     pumpPreloads();
