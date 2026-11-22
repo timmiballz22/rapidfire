@@ -1,11 +1,12 @@
 const {test,expect}=require('@playwright/test');
 const png=Buffer.from(require('node:fs').readFileSync('js/app.js','utf8').match(/BRAND_LOGO_DATA_URL = 'data:image\/png;base64,([^']+)/)[1],'base64');
+const htmlSource=require('node:fs').readFileSync('index.html','utf8');
 async function prepare(page){
   // Test the real application/UI with a deterministic service boundary; no live
   // account or production records are touched by these browser tests.
   await page.route('**/firebasejs/**',route=>route.abort());
   await page.route('**/index.html',async route=>{
-    const response=await route.fetch();let html=await response.text();
+    const html=htmlSource;
     const start=html.indexOf('async function createFirebaseService'),end=html.indexOf('(() => {',start);
     const stub=`async function createFirebaseService(){
       const user={uid:'alice',email:'alice@example.test',emailVerified:true,displayName:'Alice'};
@@ -19,7 +20,7 @@ async function prepare(page){
         upsertProject:async(project,extras)=>{window.lastProject={project,extras};return {...project,thumbnailUrl:extras.thumbnailImage||''};}
       };
     }\n`;
-    await route.fulfill({response,body:html.slice(0,start)+stub+html.slice(end)});
+    await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html.slice(0,start)+stub+html.slice(end)});
   });
   await page.goto('/index.html');
   await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate?.users.current()?.id)).toBe('alice');
@@ -52,7 +53,17 @@ test('profile photo uses drag/drop and survives a failed save',async({page})=>{
   await page.evaluate(()=>{window.failSave=true;});await page.locator('#saveProfileEdit').click();
   await expect(page.locator('#profileEditModal')).toHaveClass(/open/);await expect(page.locator('#avatarPreview')).toBeVisible();
   await page.evaluate(()=>{window.failSave=false;});await page.locator('#saveProfileEdit').click();
-  await expect(page.locator('#profileEditModal')).not.toHaveClass(/open/);
+  await expect(page.locator('#profileEditModal')).not.toHaveClass(/open/).catch(async error=>{
+    console.log('PROFILE SAVE DEBUG',JSON.stringify(await page.evaluate(()=>({
+      toast:document.querySelector('#toast')?.textContent,modal:document.querySelector('#profileEditModal')?.className,
+      saveDisabled:document.querySelector('#saveProfileEdit')?.disabled,
+      saveText:document.querySelector('#saveProfileEdit')?.textContent,
+      current:window.RapidFireTemplate?.users.current()?.id,
+      updated:window.lastProfile?{id:window.lastProfile.id,patch:window.lastProfile.patch,avatarBytes:window.lastProfile.avatarImage?.length}:null,
+      failSave:window.failSave
+    }))));
+    throw error;
+  });
   expect(await page.evaluate(()=>window.lastProfile.avatarImage)).toMatch(/^data:image\/webp;base64,/);
   expect(await page.evaluate(()=>window.RapidFireTemplate.users.current().avatarUrl)).toBe(await page.evaluate(()=>window.lastProfile.avatarImage));
   await expect(page.locator('#profileCard h1')).toHaveText('Alice the Maker');
