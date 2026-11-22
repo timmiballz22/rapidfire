@@ -17,6 +17,10 @@ test('real Firebase adapter persists profile images and thumbnail/HTML projects 
     const {user}=await signInAnonymously(api.auth),id=user.uid;
     const saved=await api.upsertProfile({id,authUid:id,handle:id,displayName:'Adapter test'});
     assert.equal(saved.authUid,id);
+    await api.saveRecommendationState(id,{version:1,history:[{id:'quiz',views:2,seconds:17,swipes:1,likes:1,saves:0,comments:0,shares:0,at:Date.now()}]});
+    assert.equal((await api.loadRecommendationState(id)).history[0].seconds,17);
+    await api.saveRecommendationSignals(id,{interests:{game:3},positiveProjectIds:['quiz']});
+    assert.deepEqual((await api.getProfile(id)).recommendationSignals.positiveProjectIds,['quiz']);
     const image='data:image/webp;base64,'+'A'.repeat(10000);
     await api.updateProfile(id,saved.handle,{displayName:'Updated',handle:id,bio:'Hi',avatarUrl:''},image);
     assert.equal((await api.getProfile(id)).avatarUrl,image);
