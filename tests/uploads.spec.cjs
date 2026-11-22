@@ -52,7 +52,17 @@ test('profile photo uses drag/drop and survives a failed save',async({page})=>{
   await page.evaluate(()=>{window.failSave=true;});await page.locator('#saveProfileEdit').click();
   await expect(page.locator('#profileEditModal')).toHaveClass(/open/);await expect(page.locator('#avatarPreview')).toBeVisible();
   await page.evaluate(()=>{window.failSave=false;});await page.locator('#saveProfileEdit').click();
-  await expect(page.locator('#profileEditModal')).not.toHaveClass(/open/);
+  await expect(page.locator('#profileEditModal')).not.toHaveClass(/open/).catch(async error=>{
+    console.log('PROFILE SAVE DEBUG',JSON.stringify(await page.evaluate(()=>({
+      toast:document.querySelector('#toast')?.textContent,modal:document.querySelector('#profileEditModal')?.className,
+      saveDisabled:document.querySelector('#saveProfileEdit')?.disabled,
+      saveText:document.querySelector('#saveProfileEdit')?.textContent,
+      current:window.RapidFireTemplate?.users.current()?.id,
+      updated:window.lastProfile?{id:window.lastProfile.id,patch:window.lastProfile.patch,avatarBytes:window.lastProfile.avatarImage?.length}:null,
+      failSave:window.failSave
+    }))));
+    throw error;
+  });
   expect(await page.evaluate(()=>window.lastProfile.avatarImage)).toMatch(/^data:image\/webp;base64,/);
   expect(await page.evaluate(()=>window.RapidFireTemplate.users.current().avatarUrl)).toBe(await page.evaluate(()=>window.lastProfile.avatarImage));
   await expect(page.locator('#profileCard h1')).toHaveText('Alice the Maker');
