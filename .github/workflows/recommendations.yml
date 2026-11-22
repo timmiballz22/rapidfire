@@ -26,7 +26,7 @@ jobs:
       - run: node --check js/recommendations.js && node --check js/app.js && node --check js/firebase-service.js
       - run: node --test tests/recommendations.test.cjs
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test tests/recommendations.spec.cjs
+      - run: npx playwright test tests/recommendations.spec.cjs tests/uploads.spec.cjs --grep 'feed exposes five|existing Firebase adapters|profile photo uses drag/drop'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
