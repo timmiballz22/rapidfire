@@ -101,6 +101,25 @@ export async function createFirebaseService(firebaseConfig, options={}){
       const resolved=await fsMod.getDoc(userRef);
       return resolved.exists()?{id:resolved.id,...resolved.data()}:profile;
     },
+    // Detailed watch history is stored only in the authenticated user's private Firestore subcollection.
+    async loadRecommendationState(profileId){
+      const ref=fsMod.doc(firestore,'users',String(profileId),'recommendations','state');
+      const snapshot=await fsMod.getDoc(ref);
+      return snapshot.exists()?snapshot.data():{version:1,history:[]};
+    },
+    async saveRecommendationState(profileId,state){
+      const ref=fsMod.doc(firestore,'users',String(profileId),'recommendations','state');
+      const history=Array.isArray(state?.history)?state.history.slice(-120):[];
+      await fsMod.setDoc(ref,{version:1,history,updatedAt:fsMod.serverTimestamp()});
+    },
+    async saveRecommendationSignals(profileId,signals){
+      // Only intentionally public, positive actions. Never publish view or swipe history.
+      const interests=Object.fromEntries(Object.entries(signals?.interests||{}).slice(0,16));
+      const positiveProjectIds=(signals?.positiveProjectIds||[]).filter(x=>typeof x==='string').slice(0,24);
+      await fsMod.updateDoc(fsMod.doc(firestore,'users',String(profileId)),{
+        recommendationSignals:{interests,positiveProjectIds}
+      });
+    },
     subscribeProfiles(callback, onError=()=>{}){
       const q = fsMod.query(fsMod.collection(firestore,'users'), fsMod.limit(250));
       return fsMod.onSnapshot(q, snap => callback(snap.docs.map(d=>({id:d.id,...d.data()}))), onError);
