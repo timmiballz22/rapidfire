@@ -1,7 +1,7 @@
 name: Verify personalized recommendations
 on:
   push:
-    branches: [feature/personalized-feed-five-preload]
+    branches: [feature/personalized-feed-five-preload, feature/personalized-search-rank-preload]
   pull_request:
     paths:
       - 'js/recommendations.js'
@@ -10,6 +10,7 @@ on:
       - 'index.html'
       - 'firestore.rules'
       - 'tests/recommendations.*'
+      - 'tests/search.spec.cjs'
       - '.github/workflows/recommendations.yml'
 permissions:
   contents: read
