@@ -71,6 +71,7 @@
       bio:String(raw.bio||'').slice(0,180),
       avatarUrl:String(raw.avatarUrl||raw.picture||''),
       stats:{followers:Number(raw.stats?.followers||0),following:Number(raw.stats?.following||0)},
+      recommendationSignals:raw.recommendationSignals&&typeof raw.recommendationSignals==='object'?raw.recommendationSignals:null,
       capabilities:{...USER_CAPABILITIES,...(raw.capabilities||{})},
       createdAt:raw.createdAt||Date.now(),
       updatedAt:raw.updatedAt||Date.now()
@@ -212,7 +213,7 @@
         const run=++generation;
         if(!frame) return;
         if(project.contentUrl.startsWith('firestore:')){
-          try{const source=await cloud.getProjectHTML(project.contentUrl);if(run!==generation)return;frame.removeAttribute('src');frame.srcdoc=instrumentProjectHTML(source);field?.classList.add('is-loaded');}
+          try{const cached=preloadedSources.get(project.contentUrl);const source=await (cached?cached.catch(()=>cloud.getProjectHTML(project.contentUrl)):cloud.getProjectHTML(project.contentUrl));if(run!==generation)return;frame.removeAttribute('src');frame.srcdoc=instrumentProjectHTML(source);field?.classList.add('is-loaded');}
           catch(error){if(run===generation){setProjectPlaying(article,false);showToast(error?.message||'Could not load project. Try again.');}}
           return;
         }
@@ -463,14 +464,155 @@
   baseProjects.forEach(p=>mountProject(p));
   queueMicrotask(()=>{const wanted=new URL(location.href).searchParams.get('project');if(wanted)openProjectById(wanted);});
 
+
+  // Personalized feed: private watch data, public positive-only collaborative signals.
+  let recState=blankRecommendationState(),recOwner='',recGeneration=0,recLoading=false,recPending=[];
+  let recSaveTimer=0,recPublicTimer=0,recRankTimer=0,recSaveChain=Promise.resolve();
+  const preloadedSources=new Map();
+  let preloadGeneration=0,preloadQueue=[],preloadRunning=0;
+  let watchedId='',watchedLastTick=0,watchedSeconds=0,watchFrame=0;
+
+  function saveRecommendations(){
+    clearTimeout(recSaveTimer);
+    if(!recOwner||!cloud||recLoading)return recSaveChain;
+    const owner=recOwner,snapshot=normalizeRecommendationState(recState),service=cloud;
+    recSaveChain=recSaveChain.catch(()=>{}).then(()=>service.saveRecommendationState(owner,snapshot))
+      .catch(e=>console.warn('[RapidFire:recommendation save]',e));
+    return recSaveChain;
+  }
+  function scheduleRecommendationSave(){
+    if(!recOwner||recLoading)return;
+    clearTimeout(recSaveTimer);recSaveTimer=setTimeout(saveRecommendations,2500);
+  }
+  function publishPublicRecommendationSignals(){
+    clearTimeout(recPublicTimer);
+    if(!recOwner||!cloud||recLoading)return;
+    const owner=recOwner,signals=publicRecommendationSignals(recState,[...projectRegistry.values()]);
+    const profile=userRegistry.get(owner);
+    if(profile)registerUser({...profile,recommendationSignals:signals});
+    cloud.saveRecommendationSignals(owner,signals).catch(e=>console.warn('[RapidFire:public signals]',e));
+  }
+  function recordRecommendationEvent(id,kind,value=0){
+    if(!projectRegistry.has(id))return;
+    const at=Date.now();
+    applyRecommendationEvent(recState,id,kind,value,at);
+    if(recLoading)recPending.push({id,kind,value,at});
+    else scheduleRecommendationSave();
+    if(['like','save','comment'].includes(kind)){
+      clearTimeout(recPublicTimer);recPublicTimer=setTimeout(publishPublicRecommendationSignals,1800);
+    }
+    scheduleRecommendationRanking();
+  }
+  function scheduleRecommendationRanking(){
+    if(recRankTimer)return;
+    recRankTimer=setTimeout(()=>{
+      recRankTimer=0;
+      const current=centeredProject();if(!current)return;
+      const all=projectElements(),index=all.indexOf(current);
+      if(index<0)return;
+      const nodes=all.slice(index+1),lookup=new Map(nodes.map(n=>[n.dataset.projectId,n]));
+      const projects=nodes.map(n=>projectRegistry.get(n.dataset.projectId)).filter(Boolean);
+      const ordered=rankRecommendedProjects(projects,recState,[...userRegistry.values()],recOwner);
+      const fragment=document.createDocumentFragment();
+      for(const project of ordered){const node=lookup.get(project.id);if(node)fragment.append(node);}
+      feed.append(fragment);refreshFivePreloads();
+    },360);
+  }
+  async function startRecommendationSession(userId){
+    const generation=++recGeneration;
+    clearTimeout(recSaveTimer);clearTimeout(recPublicTimer);
+    if(recOwner&&!recLoading)saveRecommendations();
+    recOwner=String(userId||'');recState=blankRecommendationState();recPending=[];
+    recLoading=!!(recOwner&&cloud);
+    watchedId='';watchedLastTick=0;watchedSeconds=0;
+    if(recLoading){
+      try{
+        const loaded=await cloud.loadRecommendationState(recOwner);
+        if(generation!==recGeneration)return;
+        const merged=normalizeRecommendationState(loaded);
+        for(const e of recPending)applyRecommendationEvent(merged,e.id,e.kind,e.value,e.at);
+        recState=merged;
+      }catch(error){console.warn('[RapidFire:recommendation load]',error);}
+      finally{
+        if(generation===recGeneration){
+          recLoading=false;recPending=[];scheduleRecommendationSave();
+          scheduleRecommendationRanking();refreshRecommendationViewport();
+        }
+      }
+    }else{scheduleRecommendationRanking();refreshRecommendationViewport();}
+  }
+  function sampleRecommendationDwell(){
+    if(!watchedId||!watchedLastTick)return;
+    const now=performance.now(),delta=Math.max(0,(now-watchedLastTick)/1000);
+    watchedLastTick=now;watchedSeconds+=delta;
+    if(delta>.1)recordRecommendationEvent(watchedId,'dwell',delta);
+  }
+  function refreshRecommendationViewport(){
+    const visible=document.visibilityState!=='hidden'&&screens.home.classList.contains('active');
+    const target=visible?centeredProject():null,next=target?.dataset.projectId||'';
+    if(watchedId===next)return;
+    if(watchedId){
+      sampleRecommendationDwell();
+      if(next&&watchedSeconds<3)recordRecommendationEvent(watchedId,'swipe');
+    }
+    watchedId=next;watchedLastTick=next?performance.now():0;watchedSeconds=0;
+    if(next)recordRecommendationEvent(next,'view');
+    refreshFivePreloads();
+  }
+  function queueRecommendationViewport(){
+    if(watchFrame)return;
+    watchFrame=requestAnimationFrame(()=>{watchFrame=0;refreshRecommendationViewport();});
+  }
+  function warmProject(project){
+    const article=feed.querySelector('.project[data-project-id="'+CSS.escape(project.id)+'"]');
+    const thumbnail=article?.querySelector('img[loading="lazy"]');
+    if(thumbnail){thumbnail.loading='eager';thumbnail.decode?.().catch(()=>{});}
+    const url=project.contentUrl||'';
+    if(url.startsWith('firestore:')){
+      if(!cloud||preloadedSources.has(url))return Promise.resolve();
+      const promise=cloud.getProjectHTML(url).catch(error=>{preloadedSources.delete(url);throw error;});
+      preloadedSources.set(url,promise);
+      return promise.then(()=>{}).catch(()=>{});
+    }
+    if(url.startsWith('projects/')&&/\.html?(?:[?#]|$)/i.test(url)){
+      return fetch(url,{cache:'force-cache',credentials:'same-origin'}).then(()=>{}).catch(()=>{});
+    }
+    return Promise.resolve();
+  }
+  function pumpPreloads(){
+    while(preloadRunning<2&&preloadQueue.length){
+      const task=preloadQueue.shift();
+      if(task.generation!==preloadGeneration)continue;
+      preloadRunning++;
+      Promise.resolve().then(()=>warmProject(task.project)).catch(()=>{})
+        .finally(()=>{preloadRunning--;pumpPreloads();});
+    }
+  }
+  function refreshFivePreloads(){
+    const current=centeredProject();if(!current)return;
+    const all=projectElements(),index=all.indexOf(current);
+    const upcoming=all.slice(index+1,index+6).map(n=>projectRegistry.get(n.dataset.projectId)).filter(Boolean);
+    const keep=new Set(upcoming.map(p=>p.contentUrl).filter(Boolean));
+    if(activeProject){const currentSource=projectRegistry.get(activeProject.dataset.projectId)?.contentUrl;if(currentSource)keep.add(currentSource);}
+    for(const url of preloadedSources.keys())if(!keep.has(url))preloadedSources.delete(url);
+    preloadGeneration++;preloadQueue=upcoming.map(project=>({project,generation:preloadGeneration}));
+    pumpPreloads();
+  }
+
   // ---------- navigation ----------
-  const screens = Object.fromEntries($$('.screen').map(s=>[s.dataset.screen,s]));
+  const screens = Object.fromEntries($('.screen').map(s=>[s.dataset.screen,s]));
+  feed.addEventListener('scroll',queueRecommendationViewport,{passive:true});
+  document.addEventListener('visibilitychange',queueRecommendationViewport);
+  window.addEventListener('pagehide',()=>{sampleRecommendationDwell();saveRecommendations();});
+  setInterval(()=>{if(watchedId)sampleRecommendationDwell();},12000);
+  queueMicrotask(queueRecommendationViewport);
   function go(screen){
     if(activeCommentProjectId)closeComments();
     if(screen!=='home'){stopActiveProject();clearProfileSubscriptions();}
     Object.entries(screens).forEach(([key,el])=>el.classList.toggle('active',key===screen));
     $$('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===screen));
     if(screen==='search') setTimeout(()=>$('#searchInput').focus(),80);
+    queueRecommendationViewport();
   }
   $$('[data-nav]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.dataset.nav==='add')openPublish();else if(btn.dataset.nav==='profile')openProfile(currentUser?.id||null);else go(btn.dataset.nav);}));
 
@@ -570,7 +712,7 @@
   async function runProjectSocialAction(button,kind){
     if(!currentUser){showToast(`Sign in to ${kind==='likes'?'like':'save'} projects`);return;}if(!cloud){showToast('Social service is offline');return;}
     const article=button.closest('.project'),projectId=article?.dataset.projectId;if(!projectId)return;
-    if(button.disabled)return;button.disabled=true;button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');button.disabled=false;}
+    if(button.disabled)return;button.disabled=true;button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);recordRecommendationEvent(projectId,kind==='likes'?'like':'save',on);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');button.disabled=false;}
   }
 
   // ---------- search ----------
@@ -639,7 +781,7 @@
     if(!authorId)return signInWithGoogle();if(!can('comment'))return showToast('Commenting is unavailable for this account');
     if(!cloud||!projectId)return showToast('Comments service is offline');if(!text)return showToast('Write a comment first');if(commentPending.has(projectId))return;
     commentPending.add(projectId);renderComments();
-    try{await cloud.createComment(projectId,authorId,text);if(commentDrafts.get(projectId)?.trim()===text)commentDrafts.delete(projectId);if(activeCommentProjectId===projectId&&commentText.value.trim()===text)commentText.value='';showToast('Comment posted');}
+    try{await cloud.createComment(projectId,authorId,text);recordRecommendationEvent(projectId,'comment');if(commentDrafts.get(projectId)?.trim()===text)commentDrafts.delete(projectId);if(activeCommentProjectId===projectId&&commentText.value.trim()===text)commentText.value='';showToast('Comment posted');}
     catch(error){reportCloudError('Comment publish',error,{toastUser:true});}
     finally{commentPending.delete(projectId);if(activeCommentProjectId)renderComments();}
   }
@@ -742,6 +884,7 @@
     currentUser=rawUser?registerUser(rawUser):null;followingUnsub?.();followingUnsub=null;followingIds=new Set();
     if(currentUser&&cloud)followingUnsub=cloud.subscribeFollowing(currentUser.id,ids=>{followingIds=new Set(ids);refreshFollowButtons();if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Following sync',err));
     if(!currentUser){postComposerOpen=false;clearProfileSubscriptions();}
+    if(previousId!==(currentUser?.id||null))startRecommendationSession(currentUser?.id||null);
     refreshFollowButtons();rebindAllProjectSocial();
     if(activeCommentProjectId)renderComments();
     if(screens.profile.classList.contains('active')){if(!viewedProfileId||viewedProfileId===previousId)viewedProfileId=currentUser?.id||null;renderProfile();subscribeViewedProfile();}
@@ -759,7 +902,7 @@
     }
   }
   async function signOut(){
-    try{viewedProfileId=null;await presenceUnsub?.();presenceUnsub=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
+    try{await saveRecommendations();viewedProfileId=null;await presenceUnsub?.();presenceUnsub=null;await cloud?.signOut();setCurrentUser(null);if(screens.profile.classList.contains('active')){renderProfile();subscribeViewedProfile();}showToast('Signed out');}
     catch(err){reportCloudError('Sign out',err,{toastUser:true});}
   }
   async function createPost(){if(!currentUser||!cloud||!can('post'))return showToast('Sign in to post');const text=$('#postText')?.value.trim();if(!text)return showToast('Write something first');try{await cloud.createPost(currentUser.id,text);postComposerOpen=false;showToast('Post published');}catch(err){reportCloudError('Post publish',err,{toastUser:true});}}
@@ -923,8 +1066,8 @@
     try{
       cloud=await createFirebaseService(FIREBASE_CONFIG,{timeoutMs:8000});
       indicator.textContent='Firebase connected';indicator.classList.remove('error');indicator.classList.add('online');
-      cloud.subscribeProfiles(users=>{users.forEach(registerUser);refreshCreatorIdentities();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
-      cloud.subscribeProjects(projects=>{const liveIds=new Set(projects.filter(p=>!String(p.id).startsWith('default-')).map(p=>String(p.id)));for(const oldId of lastPublishedCloudProjectIds){if(!liveIds.has(oldId))removeProjectFromUI(oldId);}lastPublishedCloudProjectIds=liveIds;for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?(builtInProjects.some(b=>b.id===raw.id&&b.ownerUserId===raw.ownerUserId&&b.contentUrl===raw.contentUrl)?'builtin':'remote'):'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(['contentUrl','embedUrl','sourceType','thumbnailUrl','title','desc','category','ownerUserId'].some(key=>existing[key]!==p[key])||existing.tags.join('|')!==p.tags.join('|'))mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
+      cloud.subscribeProfiles(users=>{users.forEach(registerUser);scheduleRecommendationRanking();refreshCreatorIdentities();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Profile sync',err));
+      cloud.subscribeProjects(projects=>{const liveIds=new Set(projects.filter(p=>!String(p.id).startsWith('default-')).map(p=>String(p.id)));for(const oldId of lastPublishedCloudProjectIds){if(!liveIds.has(oldId))removeProjectFromUI(oldId);}lastPublishedCloudProjectIds=liveIds;for(const raw of projects){if(String(raw.id).startsWith('default-'))continue;raw.isDefault=false;const owner=userRegistry.get(raw.ownerUserId);const sourceType=raw.sourceType||'embed';const p=normalizeProject({...raw,creator:owner?.handle||raw.ownerUserId,type:sourceType==='html'?'remote':sourceType==='embed'?'embed':sourceType==='builtin'?(builtInProjects.some(b=>b.id===raw.id&&b.ownerUserId===raw.ownerUserId&&b.contentUrl===raw.contentUrl)?'builtin':'remote'):'embed',sourceType,remote:true,contentUrl:raw.contentUrl||'',embedUrl:raw.embedUrl||''});const existing=projectRegistry.get(p.id);if(existing){projectRegistry.set(p.id,{...existing,...p});upsertSearchItem({...existing,...p});if(['contentUrl','embedUrl','sourceType','thumbnailUrl','title','desc','category','ownerUserId'].some(key=>existing[key]!==p[key])||existing.tags.join('|')!==p.tags.join('|'))mountProject({...existing,...p});}else{upsertSearchItem(p);mountProject(p,{prepend:true});}}scheduleRecommendationRanking();renderSearch($('#searchInput')?.value||'');if(screens.profile.classList.contains('active'))renderProfile();},err=>reportCloudError('Project sync',err));
       let authGeneration=0;
       cloud.onAuth(async fb=>{
         const generation=++authGeneration;
@@ -997,8 +1140,9 @@
     schema:Object.freeze({user:USER_SCHEMA_VERSION,project:PROJECT_SCHEMA_VERSION}),firebaseConfig:Object.freeze({...FIREBASE_CONFIG}),configureServices,
     users:Object.freeze({normalize:normalizeUser,upsert:registerUser,get:userId=>userRegistry.get(String(userId))||null,getByHandle:findUserByHandle,all:()=>[...userRegistry.values()],current:()=>currentUser,maxPUserId:MAXP_USER.id}),
     auth:Object.freeze({signInWithGoogle,signOut}),
-    addProject(project,options={}){const p=normalizeProject(project);upsertSearchItem(p);const el=mountProject(p,options);renderSearch($('#searchInput').value);return el;},
-    play(article){setProjectPlaying(article,true);},stop(){stopActiveProject();},next(article=centeredProject()){return scrollToAdjacentProject(article,1);},previous(article=centeredProject()){return scrollToAdjacentProject(article,-1);},
+    addProject(project,options={}){const p=normalizeProject(project);upsertSearchItem(p);const el=mountProject(p,options);scheduleRecommendationRanking();renderSearch($('#searchInput').value);return el;},
+    recommendations:Object.freeze({state:()=>normalizeRecommendationState(recState),ranking:()=>projectElements().map(el=>el.dataset.projectId),upcoming:()=>projectElements().slice(projectElements().indexOf(centeredProject())+1,projectElements().indexOf(centeredProject())+6).map(el=>el.dataset.projectId)}),
+     play(article){setProjectPlaying(article,true);},stop(){stopActiveProject();},next(article=centeredProject()){return scrollToAdjacentProject(article,1);},previous(article=centeredProject()){return scrollToAdjacentProject(article,-1);},
     removeProject:deleteOwnedProject,openProfile,openComments,normalizeProject,normalizeEmbedUrl,instrumentProjectHTML,brandLogoDataURL:BRAND_LOGO_DATA_URL
   });
   renderProfile();
