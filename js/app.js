@@ -848,9 +848,9 @@
     if(tab==='projects'){
       let mine=items.filter(i=>i.ownerUserId===user.id&&(i.projectId||i.localId));mine=[...new Map(mine.map(p=>[p.projectId||p.localId,p])).values()].sort((a,b)=>profileSortNewest?(b.createdAt||0)-(a.createdAt||0):(a.createdAt||0)-(b.createdAt||0));
       profilePanel.innerHTML=`<div class="panel-head"><h2>${isOwn?'Your':'Projects'}</h2><button class="sort-btn" id="sortBtn">${profileSortNewest?'Newest':'Oldest'}</button></div>${mine.length?mine.map(p=>{const proj=projectById(p.projectId||p.localId)||p;const canDelete=isOwn&&can('manageOwnProjects')&&proj.sourceType!=='builtin';return `<div class="profile-project">${renderThumbnail(p)}<div><div class="profile-project-actions"><h3>${escapeHTML(p.title)}</h3>${canDelete?`<button class="danger-btn" data-delete-project="${escapeHTML(proj.id)}">Delete</button>`:''}</div><p>${escapeHTML(p.views||'0')} views · ${escapeHTML(p.likes||'0')} likes</p><p>@${escapeHTML(user.handle)} · ${escapeHTML(proj.sourceType||'project')}</p><p>${escapeHTML(p.desc||'No description yet.')}</p><div class="result-tags">${(p.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></div>`;}).join(''):'<div class="empty-compact">No projects yet.</div>'}`;
-      $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
+      $('#sortBtn')?.addEventListener('click',()=>{profileSortNewest=!profileSortNewest;renderProfileTab('projects');});$$('[data-delete-project]',profilePanel).forEach(b=>b.addEventListener('click',()=>deleteOwnedProject(b.dataset.deleteProject)));
 
-      $('.profile-project',profilePanel).forEach((card,index)=>{
+      $$('.profile-project',profilePanel).forEach((card,index)=>{
         const entry=mine[index],id=String(entry?.projectId||entry?.localId||''),project=projectById(id);
         if(!project||!id)return;
         card.tabIndex=0;card.setAttribute('role','link');card.setAttribute('aria-label','Open '+project.title);
