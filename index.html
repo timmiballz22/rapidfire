@@ -1391,7 +1391,7 @@ async function createFirebaseService(firebaseConfig, options={}){
   let recState=blankRecommendationState(),recOwner='',recGeneration=0,recLoading=false,recPending=[];
   let recSaveTimer=0,recPublicTimer=0,recRankTimer=0,recSaveChain=Promise.resolve();
   const preloadedSources=new Map();
-  let preloadGeneration=0,preloadQueue=[],preloadRunning=0;
+  let preloadGeneration=0,preloadQueue=[],preloadRunning=0,searchOpeningProjectId='';
   let watchedId='',watchedLastTick=0,watchedSeconds=0,watchFrame=0;
 
   function saveRecommendations(){
@@ -1479,6 +1479,7 @@ async function createFirebaseService(firebaseConfig, options={}){
       if(next&&watchedSeconds<3)recordRecommendationEvent(watchedId,'swipe');
     }
     watchedId=next;watchedLastTick=next?performance.now():0;watchedSeconds=0;
+    if(next&&next===searchOpeningProjectId)searchOpeningProjectId='';
     if(next)recordRecommendationEvent(next,'view');
     refreshFivePreloads();
   }
@@ -1523,6 +1524,9 @@ async function createFirebaseService(firebaseConfig, options={}){
   // Changing screens cancels queued work, but already-warmed source data can be reused.
   function queuePreloadProjects(projects,retain=[]){
     const keep=new Set([...projects,...retain].filter(Boolean).map(p=>p.contentUrl).filter(Boolean));
+    // Keep the prefetched Search selection while its smooth-scroll transition finishes.
+    const opening=projectRegistry.get(searchOpeningProjectId)?.contentUrl;
+    if(opening)keep.add(opening);
     if(activeProject){const url=projectRegistry.get(activeProject.dataset.projectId)?.contentUrl;if(url)keep.add(url);}
     for(const url of preloadedSources.keys())if(!keep.has(url))preloadedSources.delete(url);
     preloadGeneration++;preloadQueue=projects.map(project=>({project,generation:preloadGeneration}));
@@ -1892,7 +1896,7 @@ async function createFirebaseService(firebaseConfig, options={}){
     $$('[data-person-profile]',profilePanel).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.personProfile)));
   }
   function formatTime(value){const ms=value?.toMillis?value.toMillis():Number(value||Date.now());const d=new Date(ms);return Number.isNaN(d.getTime())?'Recently':d.toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
-  function openProjectById(id){const target=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast('That project is not loaded in this feed yet');}
+  function openProjectById(id){const target=$(`.project[data-project-id="${CSS.escape(id)}"]`,feed);if(target){if(screens.search.classList.contains('active'))searchOpeningProjectId=id;go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast('That project is not loaded in this feed yet');}
   function subscribeViewedProfile(){
     clearProfileSubscriptions();const user=viewedUser();if(!user||!cloud){renderProfile();return;}
     profileUnsubs.push(
