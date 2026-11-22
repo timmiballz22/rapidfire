@@ -502,7 +502,7 @@
     if(['like','save','comment'].includes(kind)){
       clearTimeout(recPublicTimer);recPublicTimer=setTimeout(publishPublicRecommendationSignals,1800);
     }
-    if(kind!=='dwell')scheduleRecommendationRanking();
+    if(kind!=='dwell'){scheduleRecommendationRanking();scheduleSearchRerank();}
   }
   function scheduleRecommendationRanking(){
     if(recRankTimer)return;
@@ -537,10 +537,10 @@
       finally{
         if(generation===recGeneration){
           recLoading=false;recPending=[];scheduleRecommendationSave();
-          scheduleRecommendationRanking();refreshRecommendationViewport();
+          scheduleRecommendationRanking();scheduleSearchRerank();refreshRecommendationViewport();
         }
       }
-    }else{scheduleRecommendationRanking();refreshRecommendationViewport();}
+    }else{scheduleRecommendationRanking();scheduleSearchRerank();refreshRecommendationViewport();}
   }
   function sampleRecommendationDwell(){
     if(!watchedId||!watchedLastTick)return;
@@ -566,7 +566,7 @@
   }
   function warmProject(project){
     const article=feed.querySelector('.project[data-project-id="'+CSS.escape(project.id)+'"]');
-    const thumbnail=article?.querySelector('img[loading="lazy"]');
+    const thumbnail=article?.querySelector('img[loading="lazy"]')||searchContent?.querySelector('.result-card[data-project-id="'+CSS.escape(project.id)+'"] img[loading="lazy"]');
     if(thumbnail){thumbnail.loading='eager';thumbnail.decode?.().catch(()=>{});}
     const url=project.contentUrl||'';
     if(url.startsWith('firestore:')){
@@ -590,15 +590,20 @@
     }
   }
   function refreshFivePreloads(){
+    if(screens.search?.classList.contains('active')){scheduleSearchPreloads();return;}
     const current=centeredProject();if(!current)return;
     const all=projectElements(),index=all.indexOf(current);
     const upcoming=all.slice(index+1,index+6).map(n=>projectRegistry.get(n.dataset.projectId)).filter(Boolean);
-    const keep=new Set(upcoming.map(p=>p.contentUrl).filter(Boolean));
-    const currentSource=projectRegistry.get(current.dataset.projectId)?.contentUrl;
-    if(currentSource)keep.add(currentSource);
-    if(activeProject){const runningSource=projectRegistry.get(activeProject.dataset.projectId)?.contentUrl;if(runningSource)keep.add(runningSource);}
+    queuePreloadProjects(upcoming,[projectRegistry.get(current.dataset.projectId)]);
+  }
+
+  // Share the same two-request preload queue between Home and Search.
+  // Changing screens cancels queued work, but already-warmed source data can be reused.
+  function queuePreloadProjects(projects,retain=[]){
+    const keep=new Set([...projects,...retain].filter(Boolean).map(p=>p.contentUrl).filter(Boolean));
+    if(activeProject){const url=projectRegistry.get(activeProject.dataset.projectId)?.contentUrl;if(url)keep.add(url);}
     for(const url of preloadedSources.keys())if(!keep.has(url))preloadedSources.delete(url);
-    preloadGeneration++;preloadQueue=upcoming.map(project=>({project,generation:preloadGeneration}));
+    preloadGeneration++;preloadQueue=projects.map(project=>({project,generation:preloadGeneration}));
     pumpPreloads();
   }
 
@@ -614,7 +619,7 @@
     if(screen!=='home'){stopActiveProject();clearProfileSubscriptions();}
     Object.entries(screens).forEach(([key,el])=>el.classList.toggle('active',key===screen));
     $$('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===screen));
-    if(screen==='search') setTimeout(()=>$('#searchInput').focus(),80);
+    if(screen==='search'){renderSearch($('#searchInput')?.value||'');setTimeout(()=>$('#searchInput').focus(),80);}
     queueRecommendationViewport();
   }
   $$('[data-nav]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.dataset.nav==='add')openPublish();else if(btn.dataset.nav==='profile')openProfile(currentUser?.id||null);else go(btn.dataset.nav);}));
@@ -725,26 +730,113 @@
     if(button.disabled)return;button.disabled=true;button.classList.add('social-pending');try{const on=await cloud.toggleProjectSocial(kind,projectId,currentUser.id);recordRecommendationEvent(projectId,kind==='likes'?'like':'save',on);if(kind==='saves')showToast(on?'Saved to your profile':'Removed from saved');}catch(err){reportCloudError('Social update',err,{toastUser:true});}finally{button.classList.remove('social-pending');button.disabled=false;}
   }
 
-  // ---------- search ----------
+
+  // ---------- search: same personalized history as Home, text relevance first ----------
   let recentSearches=safeStore.get('rapidfire.recent.v2',['FlxInvaders','2048','WebGL Fluid Simulation','Astray']);
   const searchContent=$('#searchContent');
-  function addRecent(value){const v=String(value||'').trim();if(!v)return;recentSearches=[v,...recentSearches.filter(x=>x.toLowerCase()!==v.toLowerCase())].slice(0,5);safeStore.set('rapidfire.recent.v2',recentSearches);}
-  function suggestionRow(text,kind){return `<button class="suggestion" data-query="${escapeHTML(text)}"><span class="trend" style="color:${kind==='trend'?'var(--accent)':'#a7a7ad'}">${kind==='trend'?'🔥':'⌕'}</span><span>${escapeHTML(text)}</span></button>`;}
-  function renderSearch(query=''){
-    const q=query.trim().toLowerCase().replace(/^@+/,'');
-    if(!q){const recentHTML=recentSearches.length?recentSearches.map(x=>suggestionRow(x,'recent')).join(''):'<div class="empty" style="height:auto;padding:18px">No recent searches.</div>';const trendingHTML=items.filter(i=>i.trend).map(i=>suggestionRow(i.title,'trend')).join('');searchContent.innerHTML=`<div class="search-section-head"><span>Recently searched</span><button class="tiny-action" id="clearRecent">Clear</button></div>${recentHTML}<div class="search-section-head"><span>Trending</span></div>${trendingHTML}`;$$('.suggestion',searchContent).forEach(b=>b.addEventListener('click',()=>{addRecent(b.dataset.query);$('#searchInput').value=b.dataset.query;renderSearch(b.dataset.query);}));$('#clearRecent')?.addEventListener('click',()=>{recentSearches=[];safeStore.set('rapidfire.recent.v2',recentSearches);renderSearch();});return;}
-    const users=[...userRegistry.values()].filter(u=>[u.handle,u.displayName,u.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
-    const result=items.filter(i=>[i.title,i.creator,i.originalCreator,i.desc,i.category,...(i.tags||[])].join(' ').toLowerCase().includes(q));
-    const userHTML=users.length?`<div class="section-label">People</div>${users.map(u=>`<button class="user-result-card" data-user-result="${escapeHTML(u.id)}">${userAvatarHTML(u)}<span class="user-result-copy"><strong>${escapeHTML(u.displayName)}</strong><span>@${escapeHTML(u.handle)}${u.bio?` · ${escapeHTML(u.bio)}`:''}</span></span></button>`).join('')}`:'';
-    const projectsHTML=result.length?`<div class="section-label">Projects</div>${result.map(i=>`<button class="result-card" data-title="${escapeHTML(i.title)}">${renderThumbnail(i)}<div class="result-info"><h3>${escapeHTML(i.title)}</h3><div class="result-meta">${escapeHTML(i.views)} views · ${escapeHTML(i.likes)} likes · ${escapeHTML(i.creator)} · ${escapeHTML(i.category||'Project')}</div><div class="result-desc">${escapeHTML(i.desc)}</div><div class="result-tags">${(i.tags||[]).slice(0,4).map(t=>`<span class="tag">#${escapeHTML(t)}</span>`).join('')}</div></div></button>`).join('')}`:'';
-    if(!userHTML&&!projectsHTML){searchContent.innerHTML='<div class="empty">No people or projects found.<br/>Try a title, creator, category or tag.</div>';return;}
-    searchContent.innerHTML=userHTML+projectsHTML;
-    $$('[data-user-result]',searchContent).forEach(b=>b.addEventListener('click',()=>openProfile(b.dataset.userResult)));
-    $$('.result-card',searchContent).forEach(b=>b.addEventListener('click',()=>{addRecent(b.dataset.title);openProjectFromSearch(b.dataset.title);}));
+  let searchWarmTimer=0,searchWarmFrame=0,searchRankTimer=0;
+  function addRecent(value){
+    const v=String(value||'').trim();if(!v)return;
+    recentSearches=[v,...recentSearches.filter(x=>x.toLowerCase()!==v.toLowerCase())].slice(0,5);
+    safeStore.set('rapidfire.recent.v2',recentSearches);
   }
-  function openProjectFromSearch(title){const target=$(`.project[data-project="${CSS.escape(title)}"]`,feed);if(target){go('home');target.scrollIntoView({behavior:'smooth',block:'start'});}else showToast(`${title} is listed, but its playable preview is not loaded yet`);}
-  $('#searchInput').addEventListener('input',e=>renderSearch(e.target.value)); $('#searchInput').addEventListener('keydown',e=>{if(e.key==='Enter'){addRecent(e.currentTarget.value);renderSearch(e.currentTarget.value);}}); renderSearch();
-
+  function suggestionRow(text,kind){
+    return '<button class="suggestion" type="button" data-query="'+escapeHTML(text)+'"><span class="trend" style="color:'+(kind==='trend'?'var(--accent)':'#a7a7ad')+'">'+(kind==='trend'?'🔥':'⌕')+'</span><span>'+escapeHTML(text)+'</span></button>';
+  }
+  // The index includes default, built-in, local and Firebase-published projects.
+  // De-duplication by stable project ID also avoids opening the wrong project
+  // when two different creators give projects the same title.
+  function searchProjectCatalog(){
+    const byId=new Map();
+    for(const item of items){
+      const id=String(item.projectId||item.localId||'');
+      if(id)byId.set(id,{...item,id});
+    }
+    return [...byId.values()];
+  }
+  function renderSearchCard(item){
+    const id=String(item.id||item.projectId||item.localId||'');
+    return '<button class="result-card" type="button" data-project-id="'+escapeHTML(id)+'" data-title="'+escapeHTML(item.title)+'">'+
+      renderThumbnail(item)+'<div class="result-info"><h3>'+escapeHTML(item.title)+'</h3>'+
+      '<div class="result-meta">'+escapeHTML(item.views||'0')+' views · '+escapeHTML(item.likes||'0')+
+      ' likes · '+escapeHTML(item.creator||'')+' · '+escapeHTML(item.category||'Project')+'</div>'+
+      '<div class="result-desc">'+escapeHTML(item.desc||'')+'</div>'+
+      '<div class="result-tags">'+(item.tags||[]).slice(0,4).map(t=>'<span class="tag">#'+escapeHTML(t)+'</span>').join('')+
+      '</div></div></button>';
+  }
+  function bindSearchResults(){
+    $$('[data-user-result]',searchContent).forEach(button=>button.addEventListener('click',()=>openProfile(button.dataset.userResult)));
+    $$('.result-card[data-project-id]',searchContent).forEach(button=>button.addEventListener('click',()=>{
+      const id=button.dataset.projectId;
+      addRecent(button.dataset.title||'');
+      recordRecommendationEvent(id,'searchOpen');
+      openProjectById(id);
+    }));
+    scheduleSearchPreloads();
+  }
+  function renderSearch(query=''){
+    const q=String(query||'').trim().toLowerCase().replace(/^@+/,'');
+    const restore=searchContent.dataset.query===q?searchContent.scrollTop:0;
+    searchContent.dataset.query=q;
+    const catalog=searchProjectCatalog(),people=[...userRegistry.values()];
+    const rank=(text,list)=>rankSearchProjects(text,list,recState,people,recOwner,Date.now(),catalog);
+    if(!q){
+      const recommended=rank('',catalog).slice(0,10);
+      const recentHTML=recentSearches.length?recentSearches.map(x=>suggestionRow(x,'recent')).join(''):'<div class="empty" style="height:auto;padding:18px">No recent searches.</div>';
+      const trendingHTML=items.filter(i=>i.trend).map(i=>suggestionRow(i.title,'trend')).join('');
+      searchContent.innerHTML=
+        (recommended.length?'<div class="section-label">For you</div>'+recommended.map(renderSearchCard).join(''):'')+
+        '<div class="search-section-head"><span>Recently searched</span><button class="tiny-action" id="clearRecent">Clear</button></div>'+recentHTML+
+        '<div class="search-section-head"><span>Trending</span></div>'+trendingHTML;
+      $$('.suggestion',searchContent).forEach(button=>button.addEventListener('click',()=>{
+        addRecent(button.dataset.query);$('#searchInput').value=button.dataset.query;renderSearch(button.dataset.query);
+      }));
+      $('#clearRecent')?.addEventListener('click',()=>{recentSearches=[];safeStore.set('rapidfire.recent.v2',recentSearches);renderSearch();});
+      searchContent.scrollTop=restore;bindSearchResults();return;
+    }
+    const users=people.filter(user=>[user.handle,user.displayName,user.bio].join(' ').toLowerCase().includes(q)).slice(0,12);
+    const results=rank(q,catalog);
+    const userHTML=users.length?'<div class="section-label">People</div>'+users.map(user=>
+      '<button class="user-result-card" data-user-result="'+escapeHTML(user.id)+'">'+userAvatarHTML(user)+
+      '<span class="user-result-copy"><strong>'+escapeHTML(user.displayName)+'</strong><span>@'+escapeHTML(user.handle)+
+      (user.bio?' · '+escapeHTML(user.bio):'')+'</span></span></button>').join(''):'';
+    const projectHTML=results.length?'<div class="section-label">Projects</div>'+results.map(renderSearchCard).join(''):'';
+    searchContent.innerHTML=userHTML||projectHTML?userHTML+projectHTML:
+      '<div class="empty">No people or projects found.<br/>Try a title, creator, category or tag.</div>';
+    searchContent.scrollTop=restore;
+    bindSearchResults();
+  }
+  function scheduleSearchRerank(){
+    if(!screens.search?.classList.contains('active'))return;
+    clearTimeout(searchRankTimer);
+    searchRankTimer=setTimeout(()=>renderSearch($('#searchInput')?.value||''),250);
+  }
+  function scheduleSearchPreloads(){
+    if(!screens.search?.classList.contains('active'))return;
+    clearTimeout(searchWarmTimer);
+    searchWarmTimer=setTimeout(refreshSearchPreloads,120);
+  }
+  function refreshSearchPreloads(){
+    if(!screens.search?.classList.contains('active'))return;
+    const results=$$('.result-card[data-project-id]',searchContent);
+    if(!results.length){queuePreloadProjects([]);return;}
+    const root=searchContent.getBoundingClientRect();
+    let first=results.findIndex(node=>node.getBoundingClientRect().bottom>root.top+8);
+    if(first<0)first=results.length-1;
+    const current=results[first]?.dataset.projectId||'';
+    const ahead=results.slice(first+1,first+6).map(node=>node.dataset.projectId);
+    const preload=[current,...ahead].map(id=>projectRegistry.get(id)).filter(Boolean);
+    queuePreloadProjects(preload);
+  }
+  searchContent.addEventListener('scroll',()=>{
+    if(searchWarmFrame)return;
+    searchWarmFrame=requestAnimationFrame(()=>{searchWarmFrame=0;refreshSearchPreloads();});
+  },{passive:true});
+  $('#searchInput').addEventListener('input',event=>renderSearch(event.target.value));
+  $('#searchInput').addEventListener('keydown',event=>{
+    if(event.key==='Enter'){addRecent(event.currentTarget.value);renderSearch(event.currentTarget.value);}
+  });
+  renderSearch();
 
   // ---------- project comments: modal right sidebar ----------
   const commentsModal=$('#commentsModal'),commentsList=$('#commentsList'),commentText=$('#commentText'),commentSubmit=$('#commentSubmit'),commentAuthHint=$('#commentAuthHint'),commentsTitle=$('#commentsTitle');
