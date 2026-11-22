@@ -238,13 +238,15 @@ export async function createFirebaseService(firebaseConfig, options={}){
 
     subscribeProjectSocial(projectId, currentProfileId, callback, onError=()=>{}){
       const p=key(projectId), u=key(currentProfileId||'');
-      const state={likes:0,saves:0,shares:0,comments:0,liked:false,saved:false,shared:false};
+      const state={likes:0,saves:0,shares:0,comments:0,liked:false,saved:false,shared:false,likesReady:false,savesReady:false};
       const emit=()=>callback({...state});
       const unsubs=[];
       for(const kind of ['likes','saves','shares','comments']){
         const r=dbMod.ref(realtime,`social/projects/${p}/${kind}`);
         unsubs.push(dbMod.onValue(r,snap=>{
           state[kind]=snap.size;
+          if(kind==='likes')state.likesReady=true;
+          if(kind==='saves')state.savesReady=true;
           if(kind!=='comments'){
             const singular=kind==='likes'?'liked':kind==='saves'?'saved':'shared';
             state[singular]=u? snap.hasChild(u):false;
