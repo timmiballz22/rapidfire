@@ -699,6 +699,13 @@
     socialUnsubByArticle.get(article)?.();
     if(!cloud||!article?.isConnected)return;
     const unsub=cloud.subscribeProjectSocial(project.id,currentUser?.id||'',state=>{
+      // Reuse existing RTDB likes/saves to seed recommendations for established users.
+      // Readiness flags prevent treating initial pending data as an unlike/unsave.
+      if(currentUser){
+        const remembered=recState.history.find(h=>h.id===project.id);
+        if(state.likesReady&&!!remembered?.likes!==!!state.liked)recordRecommendationEvent(project.id,'like',!!state.liked);
+        if(state.savesReady&&!!remembered?.saves!==!!state.saved)recordRecommendationEvent(project.id,'save',!!state.saved);
+      }
       const like=$('[data-like]',article),save=$('[data-save]',article);
       like?.classList.toggle('liked',!!state.liked);save?.classList.toggle('saved',!!state.saved);
       const lc=$('[data-like-count]',article),sc=$('[data-save-count]',article),sh=$('[data-share-count]',article),cc=$('[data-comment-count]',article);
