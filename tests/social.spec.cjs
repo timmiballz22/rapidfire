@@ -1,9 +1,10 @@
 const {test,expect}=require('@playwright/test'),{readFileSync}=require('node:fs');
 const png=Buffer.from(readFileSync('js/app.js','utf8').match(/BRAND_LOGO_DATA_URL = '([^']+)/)[1].split(',')[1],'base64');
+const htmlSource=readFileSync('index.html','utf8');
 test.skip(!process.env.RAPIDFIRE_EMULATOR_E2E,'Requires Firebase emulators.');
 async function launch(page){
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/firebasejs/**',r=>r.abort());
- await page.route('**/index.html',async route=>{const response=await route.fetch(),html=await response.text(),start=html.indexOf('async function createFirebaseService'),end=html.indexOf('(() => {',start);await route.fulfill({response,body:html.slice(0,start)+"async function createFirebaseService(){return (await import('/.qa/browser-service.js')).createTestService();}\n"+html.slice(end)});});
+ await page.route('**/index.html',async route=>{const html=htmlSource,start=html.indexOf('async function createFirebaseService'),end=html.indexOf('(() => {',start);await route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html.slice(0,start)+"async function createFirebaseService(){return (await import('/.qa/browser-service.js')).createTestService();}\n"+html.slice(end)});});
  await page.goto('/index.html');await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate?.users.current()?.id),{timeout:15000}).toBeTruthy();return {id:await page.evaluate(()=>window.RapidFireTemplate.users.current().id),errors};
 }
 test('real Firebase photo, upload, social, sidebar comments and persistence',async({page,browser})=>{

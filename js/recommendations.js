@@ -7,7 +7,7 @@ export function normalizeRecommendationState(value){
     id:x.id.slice(0,180),views:Math.max(0,Number(x.views)||0),
     seconds:Math.max(0,Number(x.seconds)||0),swipes:Math.max(0,Number(x.swipes)||0),
     likes:x.likes?1:0,saves:x.saves?1:0,comments:Math.max(0,Number(x.comments)||0),
-    shares:Math.max(0,Number(x.shares)||0),at:Math.max(0,Number(x.at)||0),
+    shares:Math.max(0,Number(x.shares)||0),searchOpens:Math.max(0,Number(x.searchOpens)||0),at:Math.max(0,Number(x.at)||0),
     metadata:{category:String(x.metadata?.category||'').slice(0,48),tags:(Array.isArray(x.metadata?.tags)?x.metadata.tags:[]).map(String).slice(0,8)}
   }))};
 }
@@ -15,7 +15,7 @@ export function normalizeRecommendationState(value){
 export function applyRecommendationEvent(state,id,kind,value=0,now=Date.now(),metadata=null){
   if(typeof id!=='string'||!id)return state;
   let row=state.history.find(x=>x.id===id);
-  if(!row){row={id,views:0,seconds:0,swipes:0,likes:0,saves:0,comments:0,shares:0,at:now,metadata:{category:'',tags:[]}};state.history.push(row);}
+  if(!row){row={id,views:0,seconds:0,swipes:0,likes:0,saves:0,comments:0,shares:0,searchOpens:0,at:now,metadata:{category:'',tags:[]}};state.history.push(row);}
   if(kind==='view')row.views++;
   if(kind==='dwell')row.seconds+=Math.max(0,Math.min(3600,Number(value)||0));
   if(kind==='swipe')row.swipes++;
@@ -23,6 +23,7 @@ export function applyRecommendationEvent(state,id,kind,value=0,now=Date.now(),me
   if(kind==='save')row.saves=value?1:0;
   if(kind==='comment')row.comments++;
   if(kind==='share')row.shares++;
+  if(kind==='searchOpen')row.searchOpens++;
   if(metadata)row.metadata={category:String(metadata.category||'').slice(0,48),tags:(metadata.tags||[]).map(String).slice(0,8)};
   row.at=now;
   if(state.history.length>120)state.history.sort((a,b)=>a.at-b.at).splice(0,state.history.length-120);
@@ -56,7 +57,7 @@ export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',n
     const p=byId.get(row.id)||row.metadata;if(!p)continue;
     const age=Math.max(0,(now-row.at)/86400000),fresh=.3+.7*Math.exp(-age/45);
     const strength=(row.views*.22+Math.min(row.seconds,300)*.027+row.likes*3.5+row.saves*4.5
-      +Math.min(row.comments/Math.max(1,row.views),5)*2+row.shares*1.4-row.swipes*1.6)*fresh;
+      +Math.min(row.comments/Math.max(1,row.views),5)*2+row.shares*1.4+Math.min(row.searchOpens||0,10)*.9-row.swipes*1.6)*fresh;
     for(const term of terms(p))weights[term]=(weights[term]||0)+strength;
   }
   const mine=publicRecommendationSignals(state,catalog);
@@ -83,4 +84,47 @@ export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',n
     categoryCount.set(chosen.p.category,(categoryCount.get(chosen.p.category)||0)+1);
   }
   return ordered;
+}
+
+
+/**
+ * Search uses the same viewing/engagement/collaborative history as Home.
+ * Literal text relevance is the primary sort key, personalization breaks
+ * ties within each relevance tier. An exact title must never be buried by
+ * previously liked, but unrelated, content.
+ */
+export function searchProjectMatchStrength(project,query){
+  const q=String(query||'').trim().toLowerCase().replace(/^@+/,'');
+  if(!q)return 1;
+  const title=String(project.title||'').toLowerCase();
+  const category=String(project.category||'').toLowerCase();
+  const creator=String(project.creator||'').toLowerCase();
+  const originalCreator=String(project.originalCreator||'').toLowerCase();
+  const desc=String(project.desc||project.description||'').toLowerCase();
+  const tags=(Array.isArray(project.tags)?project.tags:[]).map(v=>String(v).toLowerCase().replace(/^#/,''));
+  let best=-1;
+  const add=(value,base)=>{
+    if(!value)return;
+    if(value===q)best=Math.max(best,base+6);
+    else if(value.startsWith(q))best=Math.max(best,base+4);
+    else if(value.includes(q))best=Math.max(best,base+2);
+  };
+  add(title,100);
+  for(const tag of tags)add(tag,75);
+  add(category,65);add(creator,60);add(originalCreator,60);add(desc,25);
+  return best;
+}
+export function rankSearchProjects(query,projects,state,profiles=[],viewerId='',now=Date.now(),catalog=projects){
+  const q=String(query||'').trim();
+  const matches=projects.map((p,index)=>({p,index,relevance:searchProjectMatchStrength(p,q)}))
+    .filter(entry=>entry.relevance>=0);
+  if(!matches.length)return [];
+  const personal=rankRecommendedProjects(matches.map(e=>e.p),state,profiles,viewerId,now,catalog);
+  const byPersonalRank=new Map(personal.map((p,i)=>[p.id,i]));
+  // Stable lexical-first ordering, with the same feed recommendation engine
+  // providing affinity, peer likes, freshness, novelty and diversity.
+  matches.sort((a,b)=>b.relevance-a.relevance
+    ||(byPersonalRank.get(a.p.id)??Infinity)-(byPersonalRank.get(b.p.id)??Infinity)
+    ||a.index-b.index);
+  return matches.map(entry=>entry.p);
 }
