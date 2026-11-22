@@ -25,6 +25,17 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/handles/$(request.resource.data.handleLower)).data.profileId == id;
     }
     match /users/{id} {
+      // Watch time and swipe history are private, even though the parent profile is public.
+      match /recommendations/{documentId} {
+        allow get: if documentId == 'state' && ownsProfile(id);
+        allow list: if false;
+        allow create, update: if documentId == 'state' && ownsProfile(id)
+          && request.resource.data.keys().hasOnly(['version', 'history', 'updatedAt'])
+          && request.resource.data.version == 1
+          && request.resource.data.history is list
+          && request.resource.data.history.size() <= 120;
+        allow delete: if documentId == 'state' && ownsProfile(id);
+      }
       allow read: if true;
       allow create: if ownsProfile(id) && request.resource.data.id == id
         && request.resource.data.authUid == request.auth.uid && reservedHandle(id) && validProfileAuthority();
