@@ -15,7 +15,9 @@ test('Search shows personalized suggestions, prewarms project sources and opens 
   await expect.poll(()=>assetRequests.size,{timeout:10000}).toBeGreaterThan(0);
   expect(await page.locator('#feed .project[data-play-state="playing"]').count()).toBe(0);
   await page.locator('#searchInput').fill('2048');
-  await expect(page.locator('#searchContent .result-card').first()).toHaveAttribute('data-project-id','default-2048');
+  await expect(page.locator('#searchContent .result-card').first()).toHaveAttribute('data-search-project-id','default-2048');
+  // Search cards must never duplicate feed data-project-id selectors.
+  expect(await page.locator('[data-project-id="default-2048"]').count()).toBe(1);
   await page.locator('#searchContent .result-card').first().click();
   await expect(page.locator('#homeScreen')).toHaveClass(/active/);
   await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate.recommendations.state().history.find(h=>h.id==='default-2048')?.searchOpens||0)).toBe(1);
@@ -34,7 +36,7 @@ test('Search opens by stable project ID instead of confusing identically titled 
   await page.getByRole('button',{name:'Search',exact:true}).click();
   await page.locator('#searchInput').fill('Duplicate Sample');
   await expect(page.locator('#searchContent .result-card')).toHaveCount(2);
-  const target=page.locator('#searchContent [data-project-id="duplicate-project-two"]');
+  const target=page.locator('#searchContent [data-search-project-id="duplicate-project-two"]');
   await target.click();
   await expect(page.locator('#homeScreen')).toHaveClass(/active/);
   await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate.recommendations.state().history.find(h=>h.id==='duplicate-project-two')?.searchOpens||0)).toBe(1);
@@ -72,7 +74,7 @@ test('different signed-in users get different personalized Search ordering from 
     });
     await page.getByRole('button',{name:'Search',exact:true}).click();
     await page.locator('#searchInput').fill('Canvas');
-    await expect.poll(()=>page.locator('#searchContent .result-card').first().getAttribute('data-project-id')).toBe(expected);
+    await expect.poll(()=>page.locator('#searchContent .result-card').first().getAttribute('data-search-project-id')).toBe(expected);
     expect(errors).toEqual([]);
     await context.close();
   }
