@@ -603,7 +603,7 @@
   }
 
   // ---------- navigation ----------
-  const screens = Object.fromEntries($('.screen').map(s=>[s.dataset.screen,s]));
+  const screens = Object.fromEntries($$('.screen').map(s=>[s.dataset.screen,s]));
   feed.addEventListener('scroll',queueRecommendationViewport,{passive:true});
   document.addEventListener('visibilitychange',queueRecommendationViewport);
   window.addEventListener('pagehide',()=>{sampleRecommendationDwell();saveRecommendations();});
