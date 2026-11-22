@@ -495,7 +495,8 @@
   function recordRecommendationEvent(id,kind,value=0){
     if(!projectRegistry.has(id))return;
     const at=Date.now();
-    applyRecommendationEvent(recState,id,kind,value,at);
+    const project=projectRegistry.get(id);
+    applyRecommendationEvent(recState,id,kind,value,at,{category:project.category,tags:project.tags});
     if(recLoading)recPending.push({id,kind,value,at});
     else scheduleRecommendationSave();
     if(['like','save','comment'].includes(kind)){
@@ -530,7 +531,7 @@
         const loaded=await cloud.loadRecommendationState(recOwner);
         if(generation!==recGeneration)return;
         const merged=normalizeRecommendationState(loaded);
-        for(const e of recPending)applyRecommendationEvent(merged,e.id,e.kind,e.value,e.at);
+        for(const e of recPending){const project=projectRegistry.get(e.id);applyRecommendationEvent(merged,e.id,e.kind,e.value,e.at,project?{category:project.category,tags:project.tags}:null);}
         recState=merged;
       }catch(error){console.warn('[RapidFire:recommendation load]',error);}
       finally{
