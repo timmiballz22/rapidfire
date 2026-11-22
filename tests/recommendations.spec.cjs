@@ -25,3 +25,26 @@ test('feed exposes five upcoming projects without auto-running embedded games',a
   await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate.recommendations.upcoming().length)).toBe(5);
   expect(errors).toEqual([]);
 });
+
+
+test('existing Firebase adapters remain compatible without new optional recommendation methods',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/index.html',async route=>{
+    const response=await route.fetch(),html=await response.text();
+    const start=html.indexOf('async function createFirebaseService'),end=html.indexOf('(() => {',start);
+    const mock=String.raw;
+    const shim="async function createFirebaseService(){"+
+      "const empty=cb=>{cb([]);return ()=>{};};"+
+      "return {onAuth:cb=>cb({uid:'legacy',displayName:'Legacy'}),"+
+      "getProfile:async()=>null,upsertProfile:async p=>p,subscribeProfiles:empty,subscribeProjects:empty,"+
+      "subscribeFollowing:(id,cb)=>empty(cb),setPresence:async()=>()=>{},"+
+      "subscribeProjectSocial:(id,me,cb)=>{cb({likes:0,saves:0,shares:0,comments:0,likesReady:true,savesReady:true,liked:false,saved:false});return ()=>{};},"+
+      "toggleProjectSocial:async()=>true};}\n";
+    await route.fulfill({response,body:html.slice(0,start)+shim+html.slice(end)});
+  });
+  await page.goto('/index.html');
+  await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate?.users.current()?.id)).toBe('legacy');
+  await page.locator('#feed .project').first().locator('[data-like]').click();
+  await page.waitForTimeout(2100);
+  expect(errors).toEqual([]);
+});
