@@ -567,7 +567,7 @@
   }
   function warmProject(project){
     const article=feed.querySelector('.project[data-project-id="'+CSS.escape(project.id)+'"]');
-    const thumbnail=article?.querySelector('img[loading="lazy"]')||searchContent?.querySelector('.result-card[data-project-id="'+CSS.escape(project.id)+'"] img[loading="lazy"]');
+    const thumbnail=article?.querySelector('img[loading="lazy"]')||searchContent?.querySelector('.result-card[data-search-project-id="'+CSS.escape(project.id)+'"] img[loading="lazy"]');
     if(thumbnail){thumbnail.loading='eager';thumbnail.decode?.().catch(()=>{});}
     const url=project.contentUrl||'';
     if(url.startsWith('firestore:')){
@@ -760,7 +760,7 @@
   }
   function renderSearchCard(item){
     const id=String(item.id||item.projectId||item.localId||'');
-    return '<button class="result-card" type="button" data-project-id="'+escapeHTML(id)+'" data-title="'+escapeHTML(item.title)+'">'+
+    return '<button class="result-card" type="button" data-search-project-id="'+escapeHTML(id)+'" data-title="'+escapeHTML(item.title)+'">'+
       renderThumbnail(item)+'<div class="result-info"><h3>'+escapeHTML(item.title)+'</h3>'+
       '<div class="result-meta">'+escapeHTML(item.views||'0')+' views · '+escapeHTML(item.likes||'0')+
       ' likes · '+escapeHTML(item.creator||'')+' · '+escapeHTML(item.category||'Project')+'</div>'+
@@ -770,8 +770,8 @@
   }
   function bindSearchResults(){
     $$('[data-user-result]',searchContent).forEach(button=>button.addEventListener('click',()=>openProfile(button.dataset.userResult)));
-    $$('.result-card[data-project-id]',searchContent).forEach(button=>button.addEventListener('click',()=>{
-      const id=button.dataset.projectId;
+    $$('.result-card[data-search-project-id]',searchContent).forEach(button=>button.addEventListener('click',()=>{
+      const id=button.dataset.searchProjectId;
       addRecent(button.dataset.title||'');
       recordRecommendationEvent(id,'searchOpen');
       openProjectById(id);
@@ -822,13 +822,13 @@
   }
   function refreshSearchPreloads(){
     if(!screens.search?.classList.contains('active'))return;
-    const results=$$('.result-card[data-project-id]',searchContent);
+    const results=$$('.result-card[data-search-project-id]',searchContent);
     if(!results.length){queuePreloadProjects([]);return;}
     const root=searchContent.getBoundingClientRect();
     let first=results.findIndex(node=>node.getBoundingClientRect().bottom>root.top+8);
     if(first<0)first=results.length-1;
-    const current=results[first]?.dataset.projectId||'';
-    const ahead=results.slice(first+1,first+6).map(node=>node.dataset.projectId);
+    const current=results[first]?.dataset.searchProjectId||'';
+    const ahead=results.slice(first+1,first+6).map(node=>node.dataset.searchProjectId);
     const preload=[current,...ahead].map(id=>projectRegistry.get(id)).filter(Boolean);
     queuePreloadProjects(preload);
   }
