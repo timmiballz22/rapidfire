@@ -32,7 +32,6 @@ test('existing Firebase adapters remain compatible without new optional recommen
   await page.route('**/index.html',async route=>{
     const response=await route.fetch(),html=await response.text();
     const start=html.indexOf('async function createFirebaseService'),end=html.indexOf('(() => {',start);
-    const mock=String.raw;
     const shim="async function createFirebaseService(){"+
       "const empty=cb=>{cb([]);return ()=>{};};"+
       "return {onAuth:cb=>cb({uid:'legacy',displayName:'Legacy'}),"+
