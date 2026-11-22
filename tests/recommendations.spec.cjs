@@ -1,22 +1,15 @@
 const {test,expect}=require('@playwright/test');
 
 test('feed exposes five upcoming projects without auto-running embedded games',async({page})=>{
-  const errors=[];
+  const errors=[],warmedStaticAssets=new Set();
+  page.on('request',request=>{const pathname=new URL(request.url()).pathname;if(/^\/projects\/.*\.html?$/.test(pathname))warmedStaticAssets.add(pathname);});
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/firebasejs/**',route=>route.abort());
   await page.goto('/index.html');
-  console.log('FEED DEBUG',JSON.stringify(await page.evaluate(()=>{
-    const feed=document.querySelector('#feed'),els=[...document.querySelectorAll('#feed .project')];
-    const root=feed?.getBoundingClientRect();
-    return {global:!!window.RapidFireTemplate,home:document.querySelector('[data-screen="home"]')?.className,
-      num:els.length,scrollTop:feed?.scrollTop,clientHeight:feed?.clientHeight,scrollHeight:feed?.scrollHeight,
-      centerIndex:els.findIndex(e=>e.dataset.projectId===window.RapidFireTemplate?.recommendations?.ranking()?.[0]),
-      first:els.slice(0,3).map(x=>x.dataset.projectId),last:els.slice(-3).map(x=>x.dataset.projectId),
-      upcoming:window.RapidFireTemplate?.recommendations?.upcoming(),root:root?{top:root.top,height:root.height}:null};
-  })),errors.map(String));
   await expect.poll(()=>page.evaluate(()=>window.RapidFireTemplate?.recommendations?.upcoming()?.length||0)).toBe(5);
   const before=await page.evaluate(()=>window.RapidFireTemplate.recommendations.upcoming());
   expect(new Set(before).size).toBe(5);
+  await expect.poll(()=>warmedStaticAssets.size,{timeout:10000}).toBeGreaterThan(0);
   const gated=await page.locator('#feed .project').evaluateAll(elements=>elements.every(el=>el.dataset.playState==='gated'));
   expect(gated).toBe(true);
   const current=await page.evaluate(()=>window.RapidFireTemplate.recommendations.ranking()[0]);
