@@ -512,7 +512,7 @@
       if(index<0)return;
       const nodes=all.slice(index+1),lookup=new Map(nodes.map(n=>[n.dataset.projectId,n]));
       const projects=nodes.map(n=>projectRegistry.get(n.dataset.projectId)).filter(Boolean);
-      const ordered=rankRecommendedProjects(projects,recState,[...userRegistry.values()],recOwner);
+      const ordered=rankRecommendedProjects(projects,recState,[...userRegistry.values()],recOwner,Date.now(),[...projectRegistry.values()]);
       const fragment=document.createDocumentFragment();
       for(const project of ordered){const node=lookup.get(project.id);if(node)fragment.append(node);}
       feed.append(fragment);refreshFivePreloads();
