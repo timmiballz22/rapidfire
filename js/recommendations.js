@@ -48,8 +48,8 @@ function similarity(a,b){
   for(const v of Object.values(bb))y+=(Number(v)||0)**2;
   return x&&y?dot/Math.sqrt(x*y):0;
 }
-export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',now=Date.now()){
-  const byId=new Map(projects.map(p=>[p.id,p])),seen=new Map(state.history.map(h=>[h.id,h])),weights={};
+export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',now=Date.now(),catalog=projects){
+  const byId=new Map(catalog.map(p=>[p.id,p])),seen=new Map(state.history.map(h=>[h.id,h])),weights={};
   for(const row of state.history){
     const p=byId.get(row.id);if(!p)continue;
     const age=Math.max(0,(now-row.at)/86400000),fresh=.3+.7*Math.exp(-age/45);
@@ -57,7 +57,7 @@ export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',n
       +Math.min(row.comments,5)*2+row.shares*1.4-row.swipes*1.6)*fresh;
     for(const term of terms(p))weights[term]=(weights[term]||0)+strength;
   }
-  const mine=publicRecommendationSignals(state,projects);
+  const mine=publicRecommendationSignals(state,catalog);
   const peers=profiles.filter(p=>p.id!==viewerId&&p.recommendationSignals)
     .map(p=>({signals:p.recommendationSignals,affinity:similarity(mine,p.recommendationSignals)}))
     .filter(p=>p.affinity>.04).sort((a,b)=>b.affinity-a.affinity).slice(0,24);
@@ -68,7 +68,7 @@ export function rankRecommendedProjects(projects,state,profiles=[],viewerId='',n
       ((peer.signals.positiveProjectIds||[]).includes(p.id)?peer.affinity*2.5:0),0);
     const popularity=Math.log1p(Math.max(0,(Number.parseFloat(p.likes)||0)+(Number.parseFloat(p.saves)||0)*1.4))*.09;
     const penalty=row?.views?Math.log1p(row.views)*.8+1.8*row.swipes/row.views:0;
-    return {p,index,score:affinity*.26+collaborative+popularity+(p.trend?.18:0)+(row?.views?0:.6)-penalty};
+    return {p,index,score:affinity*.26+collaborative+popularity+(p.trend ? .18 : 0)+(row?.views?0:.6)-penalty};
   });
   const ordered=[],categoryCount=new Map();
   while(candidates.length){
