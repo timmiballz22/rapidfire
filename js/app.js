@@ -474,7 +474,7 @@
 
   function saveRecommendations(){
     clearTimeout(recSaveTimer);
-    if(!recOwner||!cloud||recLoading)return recSaveChain;
+    if(!recOwner||!cloud||recLoading||typeof cloud.saveRecommendationState!=='function')return recSaveChain;
     const owner=recOwner,snapshot=normalizeRecommendationState(recState),service=cloud;
     recSaveChain=recSaveChain.catch(()=>{}).then(()=>service.saveRecommendationState(owner,snapshot))
       .catch(e=>console.warn('[RapidFire:recommendation save]',e));
@@ -486,7 +486,7 @@
   }
   function publishPublicRecommendationSignals(){
     clearTimeout(recPublicTimer);
-    if(!recOwner||!cloud||recLoading)return;
+    if(!recOwner||!cloud||recLoading||typeof cloud.saveRecommendationSignals!=='function')return;
     const owner=recOwner,signals=publicRecommendationSignals(recState,[...projectRegistry.values()]);
     const profile=userRegistry.get(owner);
     if(profile)registerUser({...profile,recommendationSignals:signals});
@@ -502,7 +502,7 @@
     if(['like','save','comment'].includes(kind)){
       clearTimeout(recPublicTimer);recPublicTimer=setTimeout(publishPublicRecommendationSignals,1800);
     }
-    scheduleRecommendationRanking();
+    if(kind!=='dwell')scheduleRecommendationRanking();
   }
   function scheduleRecommendationRanking(){
     if(recRankTimer)return;
@@ -524,7 +524,7 @@
     clearTimeout(recSaveTimer);clearTimeout(recPublicTimer);
     if(recOwner&&!recLoading)saveRecommendations();
     recOwner=String(userId||'');recState=blankRecommendationState();recPending=[];
-    recLoading=!!(recOwner&&cloud);
+    recLoading=!!(recOwner&&cloud&&typeof cloud.loadRecommendationState==='function');
     watchedId='';watchedLastTick=0;watchedSeconds=0;
     if(recLoading){
       try{
@@ -570,7 +570,7 @@
     if(thumbnail){thumbnail.loading='eager';thumbnail.decode?.().catch(()=>{});}
     const url=project.contentUrl||'';
     if(url.startsWith('firestore:')){
-      if(!cloud||preloadedSources.has(url))return Promise.resolve();
+      if(!cloud||typeof cloud.getProjectHTML!=='function'||preloadedSources.has(url))return Promise.resolve();
       const promise=cloud.getProjectHTML(url).catch(error=>{preloadedSources.delete(url);throw error;});
       preloadedSources.set(url,promise);
       return promise.then(()=>{}).catch(()=>{});
